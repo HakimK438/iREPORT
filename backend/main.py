@@ -1,8 +1,9 @@
 from fastapi import FastAPI
-
 from sqlalchemy import text
+
 from .database import Base, engine
 from . import models
+from .routes import router as auth_router
 
 app = FastAPI(
     title="AI Civic Reporter",
@@ -35,3 +36,5 @@ def database_health():
             "database": "error",
             "details": str(e)
         }
+
+app.include_router(auth_router)
