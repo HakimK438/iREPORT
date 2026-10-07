@@ -1,0 +1,83 @@
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Response
+from sqlalchemy import text, update
+
+from ..deps import CurrentUser, Db
+from ..errors import ApiError, forbidden
+from ..models import AuthorityProfile, RefreshToken, User
+from ..refdata import ref
+from ..schemas import MePatch, UserOut
+from .auth import COOKIE, COOKIE_PATH, user_out
+
+router = APIRouter(tags=["me"])
+
+
+@router.get("/me", response_model=UserOut)
+async def me(principal: CurrentUser):
+    return user_out(principal.user, principal.profile)
+
+
+@router.patch("/me", response_model=UserOut)
+async def patch_me(body: MePatch, principal: CurrentUser, db: Db):
+    user = await db.get(User, principal.id)
+    fields = body.model_fields_set
+    if "name" in fields and body.name:
+        user.name = body.name
+    if "phone" in fields:
+        user.phone = body.phone
+    if "area" in fields:
+        ward_id = ref.ward_id(body.area)
+        if body.area and ward_id is None:
+            raise ApiError(422, "validation_error", "Unknown area.")
+        user.ward_id = ward_id
+    if "lang" in fields and body.lang:
+        user.lang = body.lang
+    await db.commit()
+    return user_out(user, principal.profile)
+
+
+@router.get("/me/export")
+async def export_me(principal: CurrentUser, db: Db):
+    """Everything iREPORT holds about the signed-in user (DPDP Act access request)."""
+    uid = {"u": principal.id}
+    reports = (await db.execute(text("""
+        SELECT r.created_at, i.public_id, c.name AS category, r.problem_type, r.description, i.address_text,
+               ST_Y(i.location::geometry) AS lat, ST_X(i.location::geometry) AS lng, i.status::text AS status,
+               (SELECT count(*) FROM media m WHERE m.report_id = r.id) AS photos
+        FROM reports r JOIN incidents i ON i.id = r.incident_id JOIN categories c ON c.id = i.category_id
+        WHERE r.user_id = :u ORDER BY r.created_at"""), uid)).mappings().all()
+    messages = (await db.execute(text("""
+        SELECT m.created_at, i.public_id, m.body FROM messages m JOIN incidents i ON i.id = m.incident_id
+        WHERE m.sender_id = :u ORDER BY m.created_at"""), uid)).mappings().all()
+    confirmations = (await db.execute(text("""
+        SELECT c.created_at, i.public_id FROM confirmations c JOIN incidents i ON i.id = c.incident_id
+        WHERE c.user_id = :u ORDER BY c.created_at"""), uid)).mappings().all()
+    return {
+        "exported_at": datetime.now(UTC),
+        "profile": user_out(principal.user, principal.profile).model_dump(),
+        "reports": [dict(r) for r in reports],
+        "messages_sent": [dict(m) for m in messages],
+        "confirmations": [dict(c) for c in confirmations],
+    }
+
+
+@router.delete("/me", status_code=204)
+async def delete_me(principal: CurrentUser, db: Db):
+    """Anonymise personal fields. Reports stay (the problem is still real) but point to an anonymous identity."""
+    if principal.role == "admin":
+        raise forbidden("Admin accounts cannot be deleted from the app.")
+    now = datetime.now(UTC)
+    await db.execute(
+        update(User).where(User.id == principal.id).values(
+            name="Deleted user", email=f"deleted-{principal.id}@deleted.invalid", phone=None,
+            password_hash="!deleted", ward_id=None, deleted_at=now,
+        )
+    )
+    if principal.role == "authority":
+        await db.execute(update(AuthorityProfile).where(AuthorityProfile.user_id == principal.id).values(employee_id="deleted", approval="rejected", decided_at=now))
+    await db.execute(update(RefreshToken).where(RefreshToken.user_id == principal.id, RefreshToken.revoked_at.is_(None)).values(revoked_at=now))
+    await db.commit()
+    response = Response(status_code=204)
+    response.delete_cookie(COOKIE, path=COOKIE_PATH)
+    return response

@@ -1,0 +1,17 @@
+{
+  "version": "img-1.0",
+  "arch": "tf_efficientnet_lite0",
+  "fp32": {
+    "threads": 2,
+    "p50_ms": 22.0,
+    "p95_ms": 41.7,
+    "mb": 13.55
+  },
+  "int8": {
+    "threads": 2,
+    "p50_ms": 18.9,
+    "p95_ms": 29.8,
+    "mb": 3.83
+  },
+  "note": "Untrained classifier head: size and latency only. No accuracy is claimed."
+}

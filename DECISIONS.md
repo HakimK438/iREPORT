@@ -1,0 +1,68 @@
+# Decisions
+
+Where the build spec was unclear or could not be followed exactly, this is the smallest reasonable choice that was made, and why. Anything that adds a table, column, dependency or endpoint not in the spec is marked **(addition)**.
+
+## Data and schema
+
+1. **Wards.** The frontend uses 8 neighbourhood names (Andheri West, Bandra, …), not BMC administrative wards. Migration `0002` seeds exactly those 8 names with `geom = NULL`. No ward polygons were available offline, so none were invented. `scripts/load_wards.py` loads real GeoJSON later. Until polygons exist, an incident's ward is the area the citizen chose, falling back to their profile area. Once polygons are loaded, `ST_Covers` on the map point decides.
+2. **`users.messages_seen_at` (addition, one nullable column).** Messages to "all reporters" have `recipient_id = NULL`, so a single `read_at` cannot track which of several reporters has read them. The citizen unread count is "authority messages on my incidents newer than `messages_seen_at`". Opening `GET /reports/mine` sets it. `messages.read_at` is still used: it is set on citizen replies when an authority opens the incident.
+3. **Extra indexes (additions):** `reports (incident_id, created_at)` and `media (report_id, created_at)` for the joins; a partial index on draft media for the cleanup job; `refresh_tokens (token_hash)` unique; `incidents ((status <> 'Resolved'), priority_score, id)` for keyset paging of the default authority sort; `incidents (created_at, id)`; `status_events (incident_id, created_at)`; `messages (incident_id, created_at)`; a GiST index on `wards.geom`. The spec's own indexes are all kept.
+4. **`incident_public_seq` (addition).** A sequence produces `IR-YYYYMMDD-NNNNN` (date in IST).
+5. **`reports.description` length** is enforced with a CHECK (500), matching the API limit.
+6. **Priority as a SQL function.** `ireport_priority()` (migration 0001) implements the formula once in the database, so sorting and paging happen in SQL. `app/priority.py` is the same formula in Python, used to compute the "reasons" on read. A test compares the two on 300 random incidents. Both round with `floor(x + 0.5)`, because Postgres `round(double)` and Python `round()` both round half to even, while JavaScript `Math.round` rounds half up.
+7. **No `citizen_verified_at`.** The frontend shows a note about verifying a fix, but has no verify button or step, so the column was not added (spec: "only if the frontend shows that step").
+8. **No `places` table.** No OpenStreetMap extract of schools, hospitals and major roads was loaded, and the spec says to add the table only with real data. "Near school", "Near hospital" and "Main road" come from text cues and category defaults. Authorities can edit flags through `POST /authority/incidents/{id}/update`.
+9. **Account deletion.** `reports.user_id` is NOT NULL, so reports are "detached from identity" by anonymising the user row: name becomes "Deleted user", email a unique placeholder, phone, area and password are cleared, and `deleted_at` is set. The email can then be registered again. Reports, photos and confirmations stay because the problem is still real. Admin accounts cannot be deleted from the app.
+
+## API
+
+10. **Login takes `role`.** The UI has Citizen, Authority and Admin tabs, and the old store refused "right password, wrong tab". The API keeps that behaviour and returns the same messages.
+11. **Citizen registration logs in immediately** (returns a session), as the old UI did. Authority registration returns `{pending: true, message}`.
+12. **`/ai/analyze` takes two optional extra fields (addition):** `category` (the citizen's step-1 choice) and `problem_type` (step 2). They are only used for the severity estimate when the AI is unsure, because severity depends on the step-2 choice (section 7.2). `lat`/`lng` are accepted as the spec lists them, but v1 does not use them, since there is no places table.
+13. **`/ai/analyze` returns a few extra fields:** `disagreement` (image vs text, section 7.4), `source`, `model_version`, `thumb_urls`, `inference_ms`, `total_ms`. No probability vectors are stored. Only the top-1 label, confidence and model version reach the database, and only if the citizen submits.
+14. **The AI fields in `POST /reports` come from the client.** The server never trusts them for anything that matters. It recomputes severity and flags itself, and `ai` is stored only as the training signal (`ai_category_id`, `ai_confidence`, `model_version`, `user_corrected`).
+15. **`POST /reports` accepts optional `area` and `flags` (addition).** `area` is the neighbourhood shown in the flow, used for the ward until polygons exist. `flags` must come from the fixed list and are only ever added. The server adds its own cue and category flags too.
+16. **`/incidents/nearby` takes `sort=nearest|recent|affected|severity` (addition)**, because the Community page has that sort menu. `status` accepts a comma list (`Reported,Under Review` for the "Pending" chip). Paging uses an offset cursor (feeds are short); the authority list uses keyset cursors.
+17. **Confirmations.** A reporter is already counted in `affected_count`, so confirming their own incident is a no-op. Confirming a resolved incident returns 409. A citizen who confirmed and then reports the same incident is not counted twice.
+18. **Phone numbers** are returned only with `GET /authority/incidents/{id}?include_phone=true`.
+19. **`/authority/incidents` returns `total` on the first page only.** It is a count for the filter set. Later pages skip it to stay fast.
+20. **Health routes** live at `/api/v1/health` and `/api/v1/ready`. `/ready` needs the database and the text model. The image model is reported but only required when `REQUIRE_IMAGE_MODEL=true`.
+21. **Extra `/me` routes:** `GET /me/export` and `DELETE /me`. They are needed for the "support account deletion and data export" requirement in section 11, and they are wired to Profile → Privacy & Account.
+
+21a. **Refresh-token reuse has a 60 s grace window.** Strict reuse detection would log a user out everywhere when two tabs refresh with the same cookie at the same moment. A token rotated less than 60 s ago returns `401 refresh_race`, and the client retries once with the new cookie the other tab already received. Reuse after 60 s still revokes every session of that user.
+
+## AI
+
+22. **No trained image model ships in this repository.** None of the public datasets (RDD2022, Kaggle potholes, TrashNet, TACO) are available offline, and fine-tuning needs a GPU-day of work and hand-checked labels for streetlight, drainage, leakage and electrical photos. The full pipeline is here (`ml/train_image.py`, `ml/export_onnx.py`, `ml/evaluate.py`). Until `backend/models/img-1.0.onnx` exists, the API stores photos, says `uncertain: true` for image-only reports, and the citizen picks the category. This is the spec's "never block on the AI" path. **No image accuracy is claimed anywhere.**
+23. **The text model was trained on a small hand-written seed set** (`ml/data/text/complaints.csv`, 280 sentences: English, Hindi, Marathi, Hinglish, a few Latin-script Marathi). Its metrics (`ml/reports/txt-1.0.json`) come from a held-out split by sentence and 5-fold CV. They are real for this data but optimistic for real complaints, so retrain on real reports after launch (section 7.5).
+24. **The text model runs without scikit-learn.** It is exported to `.npz` (vocabulary, idf, coefficients) and the char-n-gram TF-IDF + softmax is reimplemented in about 60 lines of NumPy (`app/ai/text_model.py`). This keeps scikit-learn and SciPy out of the API image. `ml/tests/test_text_parity.py` proves it matches `predict_proba` to 1e-5.
+25. **Cue keywords** are matched as word prefixes for Latin script and as substrings for Devanagari, because Devanagari takes many suffixes and oblique forms like शाळे**जवळ**. Bare "current" was dropped from the electrical cues ("the current status…"); phrases like "current laga" and "electric current" are used instead.
+26. **Severity rules** port the old `suggestSeverity` (Electrical Hazard is Critical; "dangerous / large / multiple / broken / damaged / overflowing / illegal" are High) and add "unsafe" to that High list. "Small" with no risk flag is Low. Live wiring or an injury raises severity to Critical; school, hospital, flood risk or an open manhole raises it to at least High. A merged incident keeps the higher severity and the union of flags.
+
+## Images and storage
+
+27. **MinIO image.** `minio/minio` is no longer published on Docker Hub (the pull fails), so compose uses `cgr.dev/chainguard/minio`, the same server binary. Any S3-compatible store works.
+28. **S3 client: `minio` (Python) instead of boto3.** It is much smaller, works with S3 and R2, and signs URLs locally. A second client signs with the public host (`S3_PUBLIC_ENDPOINT`), so signed URLs work from the browser while the API talks to `minio:9000` inside Docker.
+29. **`pillow-heif`** (addition) decodes HEIC, which the spec lists as an accepted type.
+30. **Browser compression removes EXIF, including GPS.** Photos over 300 KB are re-encoded by canvas, so their GPS does not reach the server. Photos under 300 KB keep it, and the server suggests their location and then strips it. The main location sources are "Use my current location" (browser geolocation) and the landmark field.
+31. **The 8 s AI timeout starts after the upload finishes.** A slow uplink should not be treated as a slow model. On timeout or error the flow goes to the manual category picker and offers Retry. The report can still be submitted, with or without photos.
+32. **Retention.** For an incident resolved more than 12 months ago, the full image is deleted and `media.storage_key` is set to the thumbnail key, so the row stays valid.
+
+## Runtime
+
+33. **One API process.** The rate limiter (in-memory fixed window), APScheduler jobs and ONNX session live in one uvicorn worker, as the spec asks for no Redis or Celery in v1. With several replicas, rate limits become per-process and the scheduler should run in only one of them (`ENABLE_SCHEDULER=false` elsewhere).
+34. **Merging is serialised per category** with `pg_advisory_xact_lock`, so two neighbours reporting the same pothole at the same moment still merge. `FOR UPDATE` is taken in a second query by id, because `FOR UPDATE` on a KNN (`<->`) index scan fails with "attempted to lock invisible tuple".
+35. **Tests use cheap argon2 parameters** (`ENV=test` only); everywhere else uses the argon2-cffi defaults.
+36. **Postgres listens on host port 5434** in compose, because 5432 and 5433 were taken on the development machine. Change `POSTGRES_HOST_PORT` if needed.
+
+37a. **`pg_trgm` extension and migration 0003 (addition).** The 100,000-incident load test failed the 300 ms target (p95 799 ms). Search with `ILIKE '%q%'` scanned every row (median 833 ms), and the "Longest open" and "Most affected" sorts had no matching index. Migration 0003 adds trigram GIN indexes on `address_text` and `public_id`, plus keyset indexes for those two sorts. Afterwards p95 was 76 ms. `pg_trgm` ships with PostgreSQL (contrib); it is not a new service.
+37b. **Control-room search scope.** `q` matches report ID, address or landmark, category name and area name. It no longer searches the step-2 problem type ("Large", "Overflowing"). That needed a per-row lookup into `reports` and was the main cost of the slow search.
+37c. **WebP `method=2`** instead of Pillow's default 4. On a 1280 px photo it is about 4× faster (≈250 ms vs ≈1,000 ms) for files within about 3 % of the size. This alone halved `/ai/analyze` latency.
+
+## Frontend
+
+37. **Demo box** shows only in `import.meta.env.DEV`. The demo citizen and officer come from `python -m scripts.seed_demo` (dev only, refuses in production). The admin is always the `.env` one. No credentials remain in the frontend code paths that ship.
+38. **The home page "incident" card** stays as a static illustration, because it is marketing content. Its button now opens Community instead of faking a confirmation.
+39. **"Saved / Followed Issues"** in Profile showed a made-up "4 issues". There is no follow feature in the spec, so it now says "Coming soon". "Notifications" shows the real unread count.
+40. **The report flow is a separate lazy chunk** (`ReportFlow.tsx` + `compress.ts`), so the home page loads no photo or AI code. `Brand`, categories and problem lists moved to `brand.tsx` so both chunks can use them.
+41. **The map** is still the OpenStreetMap embed iframe. It now centres on the real pin (area centre, device location or photo location), but an embed cannot report a dragged pin back, so "move the map" is only visual. A draggable map would need a map library (not in the dependency list).
