@@ -26,7 +26,10 @@ Authority: control room (priority list, hotspots, AI/NLP evidence) → status/me
 Severity, risk flags, priority score (`priority.py`, mirrors SQL `ireport_priority`), photo quality, and NLP extraction (`ai/rules.py: extract_nlp`): duration, obstruction, hazard, urgency, from the citizen's own text in English/Hindi/Marathi/Hinglish. A field is `null` when the text does not say it. Urgency is derived from severity + flags + duration. The NLP result is computed server-side at submit and stored in `reports.nlp`.
 
 ## Hotspots
-`GET /authority/hotspots` and `admin/overview.hotspots`: open incidents grouped by area. `impact_score = 100 × (area's summed priority scores) / (largest area's sum)`. Also returns open count, critical count, categories with counts, unique citizens, confirmations. Incidents stay separate. DBSCAN clustering is not implemented (TODO_LATER).
+`GET /authority/hotspots` and `admin/overview.hotspots`: open incidents grouped by area. `impact_score = 100 × (area's summed priority scores) / (largest area's sum)`. Also returns open count, critical count, categories with counts, unique citizens, confirmations. Incidents stay separate. 
+## Map dashboard (authority control room + admin)
+`GET /authority/map` and `GET /admin/map` return every incident with its PostGIS coordinates, per-area totals and clusters. Leaflet + OpenStreetMap tiles draw one point per problem (colour and size = priority level); area chips filter the map and the card list; clicking a card or point opens the full detail (admin: `GET /admin/incidents/{id}`, read-only, no phone numbers).
+**ML:** clusters are unsupervised DBSCAN (`ST_ClusterDBSCAN`, UTM 43N, eps 300 m, min 2 open incidents). It shows where problems pile up; it predicts nothing. The text-classifier output and agreement flag are shown in the same detail view; priority and NLP stay labelled rule-based.
 
 ## Data added by migration 0004 (`reports`)
 `location_source`, `citizen_message`, `ai_source`, `ai_disagreement`, `nlp`.

@@ -18,16 +18,8 @@ type User = ApiUser;
 
 const media = (file: string) => `${import.meta.env.BASE_URL}media/${file}`;
 
-const flowSteps = [
-  ["Spot an issue", "Potholes, garbage, leaks."],
-  ["Snap & pin", "Photo and exact location."],
-  ["AI sorts it", "Classified and prioritised."],
-  ["One incident", "Neighbours' reports merge."],
-  ["Crews act", "Fixed, tracked, closed."],
-];
-
 const faqs = [
-  ["What can I report?", "Roads, streetlights, waste, water, drainage, electrical hazards and other public-space issues."],
+  ["What can I report?", "Potholes and road damage, streetlights, waste, water and drainage, electrical hazards and other public-space issues."],
   ["Can I choose the location manually?", "Yes. Search an area, landmark or street and move the map pin before confirming."],
   ["Does iREPORT automatically contact BMC?", "Not unless a verified authority integration is active. We always show the delivery state clearly."],
   ["How does Community work?", "It groups evidence into civic incidents and shows the combined community signal."],
@@ -121,24 +113,6 @@ function Reveal({ className = "", id, children }: { className?: string; id?: str
   return <section ref={ref} id={id} className={`${className} reveal${shown ? " in" : ""}`}>{children}</section>;
 }
 
-function FlowVideo() {
-  const ref = useRef<HTMLVideoElement>(null);
-  useEffect(() => {
-    const video = ref.current;
-    if (!video) return;
-    video.muted = true;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce || !("IntersectionObserver" in window)) return;
-    const io = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) video.play().catch(() => {});
-      else video.pause();
-    }, { threshold: 0.5 });
-    io.observe(video);
-    return () => io.disconnect();
-  }, []);
-  return <div className="flow-stage"><video ref={ref} muted loop playsInline preload="auto" poster={media("ireport-flow-poster.jpg")} disablePictureInPicture disableRemotePlayback controlsList="nodownload noplaybackrate noremoteplayback nofullscreen" tabIndex={-1} onContextMenu={e => e.preventDefault()} onRateChange={e => { e.currentTarget.playbackRate = 1; }} aria-label="Animation: spot an issue, snap and pin it, AI sorts it, neighbours' reports merge into one incident, crews act"><source src={media("ireport-flow.mp4")} type="video/mp4" /></video></div>;
-}
-
 function Faq() {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
   return <div className="faq-panel"><span className="eyebrow">HELP & FAQ</span><h2>Common questions</h2><div className="faq-list">{faqs.map(([q, a], i) => <div key={q} className={`faq-item${openIndex === i ? " open" : ""}`}><button aria-expanded={openIndex === i} onClick={() => setOpenIndex(openIndex === i ? null : i)}><span>{q}</span><Icon name="plus" size={20} /></button><div className="faq-body"><p>{a}</p></div></div>)}</div></div>;
@@ -153,7 +127,7 @@ function CategoryCard({ card, label, onClick, i }: { card: (typeof homeCards)[nu
   // Real photo from public/categories/ when present; otherwise the emoji card. Fixed aspect ratio, so no layout shift.
   return <button onClick={onClick} className="category-card cc-photo" style={{ "--i": i } as React.CSSProperties}>
     <span className="cc-media">{ok ? <img src={`${import.meta.env.BASE_URL}categories/${card.file}`} alt={label} loading="lazy" width={400} height={300} onError={() => setOk(false)} /> : <span className="cc-emoji" aria-hidden="true">{card.emoji}</span>}</span>
-    <b>{card.emoji} {label}</b><Icon name="arrow" size={18} />
+    <b>{card.emoji} {label}</b><Icon name="plus" size={18} />
   </button>;
 }
 
@@ -161,12 +135,10 @@ function Home({ open, go, lang }: { open: (category?: string) => void; go: (p: P
   const t = copy[lang];
   return <main>
     <section className="section hero">
-      <div className="hero-copy"><div className="context"><span className="bmc-mark">मुं</span><span><b>Mumbai civic reporting</b><small>Independent citizen platform · BMC context</small></span></div><div className="eyebrow">{t.eyebrow}</div><h1>{t.hero}</h1><p className="lead">{t.trust}</p><div className="cta-row"><button className="primary large" onClick={() => open()}><Icon name="camera" />{t.start}<Icon name="arrow" /></button><button className="secondary large" onClick={() => go("community")}>{t.explore}</button></div><div className="trust-note"><Icon name="shield" /><span><b>You review every report.</b> AI never changes your submission silently.</span></div></div>
-      <div className="hero-visual"><img src={media("bmc-headquarters.jpg")} alt="Brihanmumbai Municipal Corporation headquarters, Fort, Mumbai" /><div className="location-pill"><Icon name="pin" size={16} /> Fort, Mumbai</div><div className="ai-float bmc-caption"><span className="ai-icon"><Icon name="pin" /></span><small>BRIHANMUMBAI MUNICIPAL CORPORATION</small><b>BMC Headquarters</b><div><span>MAHAPALIKA MARG, FORT</span><span>HELPLINE 1916</span></div></div></div>
+      <div className="hero-copy"><h1>{t.hero}</h1><div className="cta-row"><button className="primary large" onClick={() => open()}><Icon name="camera" />{t.start}<Icon name="arrow" /></button><button className="secondary large" onClick={() => go("community")}>{t.explore}</button></div></div>
+      <div className="hero-visual"><img src={media("bmc-headquarters.jpg")} alt="Brihanmumbai Municipal Corporation headquarters, Fort, Mumbai" /><div className="location-pill"><Icon name="pin" size={16} /> Fort, Mumbai</div></div>
     </section>
-    <Reveal className="section category-section"><div className="section-heading"><div><span className="eyebrow">QUICK REPORT</span><h2>{t.what}</h2><p>{t.whatSub}</p></div><button className="text-button" onClick={() => open()}>All categories <Icon name="arrow" /></button></div><div className="category-grid">{homeCards.map((c, i) => <CategoryCard key={c.key} card={c} i={i} label={tr(lang, c.key)} onClick={() => open(c.flow)} />)}</div></Reveal>
-    <Reveal className="section flow-section"><div className="flow-head"><div><span className="eyebrow">SEE THE FLOW</span><h2>{t.how}</h2><p>{t.howSub}</p></div><button className="primary" onClick={() => open()}>Start reporting <Icon name="arrow" /></button></div><FlowVideo /><ol className="flow-steps">{flowSteps.map(([title, text], i) => <li key={title}><span>{i + 1}</span><b>{title}</b><small>{text}</small></li>)}</ol></Reveal>
-    <Reveal className="section home-incident"><div><span className="eyebrow">ONE CITY · SHARED VISIBILITY</span><h2>Know what needs attention nearby.</h2><p>Community groups reports by civic incident—not by popularity.</p><button className="secondary" onClick={() => go("community")}>View Community <Icon name="arrow" /></button></div></Reveal>
+    <Reveal className="section category-section"><div className="section-heading"><h2>{t.what}</h2></div><div className="category-grid">{homeCards.map((c, i) => <CategoryCard key={c.key} card={c} i={i} label={tr(lang, c.key)} onClick={() => open(c.flow)} />)}</div></Reveal>
     <Reveal id="help" className="section help-section"><Faq /><BmcOffice /></Reveal>
     <Reveal className="section final-cta"><div><span>READY WHEN YOU ARE</span><h2>Help Mumbai notice what matters.</h2></div><button className="primary large" onClick={() => open()}>Report a problem <Icon name="arrow" /></button></Reveal>
   </main>;
@@ -179,9 +151,9 @@ function IncidentCard({ title, area, type, affected, image, severity, status, co
 }
 
 const COMMUNITY_FILTERS: Record<string, { category?: string; status?: string; radius: number }> = {
-  Nearby: { radius: 2000 }, All: { radius: 50000 }, Potholes: { category: "Pothole", radius: 25000 }, Roads: { category: "Road Damage", radius: 25000 },
+  Nearby: { radius: 2000 }, All: { radius: 50000 }, Potholes: { category: "Pothole", radius: 25000 },
   Streetlights: { category: "Streetlight", radius: 25000 }, Garbage: { category: "Garbage", radius: 25000 }, Water: { category: "Water Leakage", radius: 25000 },
-  Drainage: { category: "Drainage", radius: 25000 }, Electrical: { category: "Electrical Hazard", radius: 25000 },
+  Electrical: { category: "Electrical Hazard", radius: 25000 },
   Pending: { status: "Reported,Under Review", radius: 25000 }, "In Progress": { status: "In Progress", radius: 25000 }, Resolved: { status: "Resolved", radius: 25000 },
 };
 const COMMUNITY_SORT: Record<string, string> = { Nearest: "nearest", Recent: "recent", "Most affected": "affected", "High severity": "severity" };

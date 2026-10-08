@@ -138,10 +138,9 @@ async def hotspots(_: Authority, db: Db, limit: int = Query(5, ge=1, le=20)):
     return {"items": await svc.hotspots(db, limit)}
 
 
-@router.get("/incidents/{incident_id}")
-async def incident_detail(incident_id: uuid.UUID, authority: Authority, db: Db, include_phone: bool = False):
-    """Full detail for an approved authority: priority reasons (computed on read), reporters' names,
-    the message thread and signed photo URLs. Phone numbers only when explicitly requested."""
+async def build_detail(db, incident_id: uuid.UUID, viewer_id: uuid.UUID, include_phone: bool = False) -> dict:
+    """Full incident detail: priority reasons (computed on read), reporters' names, the message thread and
+    signed photo URLs. Shared by the authority and (read-only) admin routes. Phones only when requested."""
     row = (await db.execute(text(f"""
         WITH page AS (SELECT * FROM incidents WHERE id = :id)
         {svc.ROW_SELECT.format(extra=", ST_Y(i.location::geometry) AS lat, ST_X(i.location::geometry) AS lng")}"""), {"id": incident_id})).first()
@@ -167,8 +166,20 @@ async def incident_detail(incident_id: uuid.UUID, authority: Authority, db: Db, 
         } for r in reporters],
         images=[{"url": storage.signed_url(m.storage_key), "thumb_url": storage.signed_url(m.thumb_key), "width": m.width, "height": m.height} for m in media],
         history=(await svc.history(db, [incident_id]))[incident_id],
-        messages=(await svc.thread(db, [incident_id], authority.id, as_authority=True))[incident_id],
+        messages=(await svc.thread(db, [incident_id], viewer_id, as_authority=True))[incident_id],
     )
+    return d
+
+
+@router.get("/map")
+async def map_view(_: Authority, db: Db):
+    """Map dashboard data: every incident with coordinates, per-area totals and DBSCAN clusters."""
+    return await svc.map_data(db)
+
+
+@router.get("/incidents/{incident_id}")
+async def incident_detail(incident_id: uuid.UUID, authority: Authority, db: Db, include_phone: bool = False):
+    d = await build_detail(db, incident_id, authority.id, include_phone)
     await db.execute(text("""UPDATE messages m SET read_at = now() FROM users u
                              WHERE u.id = m.sender_id AND u.role = 'citizen' AND m.incident_id = :id AND m.read_at IS NULL"""), {"id": incident_id})
     await db.commit()

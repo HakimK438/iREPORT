@@ -1,6 +1,7 @@
 """Incident and report logic shared by the citizen and authority routes."""
 
 import json
+import math
 import uuid
 
 from sqlalchemy import text
@@ -109,6 +110,90 @@ async def hotspots(db: AsyncSession, limit: int = 5) -> list[dict]:
             "lat": r.lat, "lng": r.lng,
         })
     return out
+
+
+# --- Map dashboard -------------------------------------------------------------------------------
+# Unsupervised ML: DBSCAN over the PostGIS points of OPEN incidents (UTM 43N, so eps is in metres).
+# A cluster = at least CLUSTER_MIN_POINTS open problems within CLUSTER_EPS_M of each other (chained).
+# It finds where problems pile up regardless of ward borders; it does not predict anything.
+CLUSTER_EPS_M = 300
+CLUSTER_MIN_POINTS = 2
+MAP_LIMIT = 3000
+
+MAP_SQL = f"""
+SELECT i.id, i.public_id, c.name AS category, w.name AS area, i.address_text, i.severity::text AS severity, i.status::text AS status,
+       i.priority_score, i.affected_count, i.created_at, ST_Y(i.location::geometry) AS lat, ST_X(i.location::geometry) AS lng,
+       (SELECT r.problem_type FROM reports r WHERE r.incident_id = i.id ORDER BY r.created_at LIMIT 1) AS problem_type,
+       CASE WHEN i.status <> 'Resolved' THEN
+         ST_ClusterDBSCAN(ST_Transform(i.location::geometry, 32643), eps := {CLUSTER_EPS_M}, minpoints := {CLUSTER_MIN_POINTS})
+           OVER (PARTITION BY (i.status <> 'Resolved'))
+       END AS cid
+FROM incidents i JOIN categories c ON c.id = i.category_id LEFT JOIN wards w ON w.id = i.ward_id
+ORDER BY i.priority_score DESC, i.created_at DESC
+LIMIT {MAP_LIMIT}
+"""
+
+
+def _metres(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    dy, dx = (lat2 - lat1) * 111_320, (lng2 - lng1) * 111_320 * math.cos(math.radians(lat1))
+    return math.hypot(dx, dy)
+
+
+async def map_data(db: AsyncSession) -> dict:
+    """Everything the map dashboard draws: every incident with its coordinates, per-area totals, and the
+    DBSCAN clusters of open incidents. Read-only; coordinates are the incident's own point."""
+    rows = (await db.execute(text(MAP_SQL))).all()
+    incidents, by_cluster, by_area = [], {}, {}
+    for r in rows:
+        is_open = r.status != "Resolved"
+        cluster = int(r.cid) if is_open and r.cid is not None else None
+        item = {
+            "id": r.id, "public_id": r.public_id, "title": title_of(r.problem_type, r.category, r.address_text), "category": r.category,
+            "area": r.area, "severity": r.severity, "status": r.status, "priority_score": r.priority_score, "level": level_of(r.priority_score),
+            "affected_count": r.affected_count, "created_at": r.created_at, "lat": r.lat, "lng": r.lng, "cluster": cluster,
+        }
+        incidents.append(item)
+        if cluster is not None:
+            by_cluster.setdefault(cluster, []).append(item)
+        a = by_area.setdefault(r.area, {"area": r.area, "total": 0, "open": 0, "critical": 0, "resolved": 0, "categories": {}, "lats": [], "lngs": []})
+        a["total"] += 1
+        a["lats"].append(r.lat)
+        a["lngs"].append(r.lng)
+        if is_open:
+            a["open"] += 1
+            a["critical"] += r.priority_score >= 65
+            a["categories"][r.category] = a["categories"].get(r.category, 0) + 1
+        else:
+            a["resolved"] += 1
+
+    clusters = []
+    for cid, members in by_cluster.items():
+        lat, lng = sum(m["lat"] for m in members) / len(members), sum(m["lng"] for m in members) / len(members)
+        counts: dict[str, int] = {}
+        for m in members:
+            counts[m["category"]] = counts.get(m["category"], 0) + 1
+        top = max(counts, key=lambda k: counts[k])
+        areas = sorted({m["area"] for m in members if m["area"]})
+        clusters.append({
+            "id": cid, "size": len(members), "lat": lat, "lng": lng,
+            "radius_m": round(max(_metres(lat, lng, m["lat"], m["lng"]) for m in members) + 60),  # +60 m so a single pair is still visible
+            "critical": sum(m["priority_score"] >= 65 for m in members), "priority_sum": sum(m["priority_score"] for m in members),
+            "categories": [{"category": k, "count": v} for k, v in sorted(counts.items(), key=lambda kv: -kv[1])],
+            "areas": areas, "incident_ids": [m["id"] for m in members],
+            "name": f"{top} cluster" + (f" near {areas[0]}" if areas else "") + (f" ({len(members)} open problems)"),
+        })
+    clusters.sort(key=lambda c: (-c["priority_sum"], c["id"]))
+    areas_out = [
+        {"area": a["area"] or "Outside mapped areas", "total": a["total"], "open": a["open"], "critical": a["critical"], "resolved": a["resolved"],
+         "categories": [{"category": k, "count": v} for k, v in sorted(a["categories"].items(), key=lambda kv: -kv[1])],
+         "lat": sum(a["lats"]) / len(a["lats"]), "lng": sum(a["lngs"]) / len(a["lngs"])}
+        for a in by_area.values()
+    ]
+    areas_out.sort(key=lambda a: (-a["critical"], -a["open"], a["area"]))
+    return {
+        "incidents": incidents, "clusters": clusters, "areas": areas_out, "truncated": len(rows) >= MAP_LIMIT,
+        "method": {"name": "DBSCAN (unsupervised clustering)", "engine": "PostGIS ST_ClusterDBSCAN", "eps_m": CLUSTER_EPS_M, "min_points": CLUSTER_MIN_POINTS, "scope": "open incidents only"},
+    }
 
 
 async def recompute_priority(db: AsyncSession, ids: list[uuid.UUID] | None = None) -> int:

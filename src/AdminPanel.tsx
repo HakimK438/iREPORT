@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "./Icon";
 import { ago } from "./store";
 import { api, type AdminAuthority } from "./api";
+import MapDashboard from "./MapDashboard";
+import { hotspotReasons } from "./AuthorityDashboard";
 
 export default function AdminPanel() {
   const qc = useQueryClient();
@@ -30,6 +32,7 @@ export default function AdminPanel() {
       <div><small>Citizens</small><b>{n(stats.data?.citizens)}</b></div>
       <div><small>Total problems</small><b>{n(stats.data?.incidents)}</b></div>
     </div>
+    <section className="admin-card"><MapDashboard mode="admin" /></section>
     <section className="admin-card"><h2>City overview</h2>
       {overview.isPending && <p className="muted-line">Loading…</p>}
       {overview.isError && <div className="empty-note error"><Icon name="alert" /><span><b>Could not load the overview.</b><small>{(overview.error as Error).message}</small></span><button className="secondary compact" onClick={() => overview.refetch()}>Retry</button></div>}
@@ -41,7 +44,7 @@ export default function AdminPanel() {
         <p className="muted-line">Recommendation only: nothing is assigned or stored.</p>
         <ul className="plain">{overview.data.categories.length === 0 && <li>No open problems.</li>}{overview.data.categories.map(c => <li key={c.category}><b>{c.share_pct}%</b> {c.category} ({c.open}) · {c.recommendation}</li>)}</ul>
         <h3 className="ad-h">Top hotspots <em className="src-tag src-gis">GIS (PostGIS)</em></h3>
-        <div className="hot-grid">{overview.data.hotspots.map(h => <div className="hot-card" key={h.area}><div className="hot-top"><b>{h.area}</b><span className="hot-score">{h.impact_score}</span></div><p>{h.open_incidents} open · {h.critical} critical · {h.unique_citizens} citizens</p><p className="hot-cats">{h.categories.map(c => `${c.category} ×${c.count}`).join(" · ")}</p></div>)}{overview.data.hotspots.length === 0 && <p className="muted-line">No open problems with a known area.</p>}</div>
+        <div className="hot-grid">{overview.data.hotspots.map(h => <div className="hot-card" key={h.area}><div className="hot-top"><b>{h.area}</b><span className="hot-score">{h.impact_score}</span></div><p>{h.open_incidents} open · {h.critical} critical · {h.unique_citizens} citizens</p><p className="hot-cats">{h.categories.map(c => `${c.category} ×${c.count}`).join(" · ")}</p><p className="hot-why muted-line">Impact {h.impact_score}/100 because: {hotspotReasons(h).join(" · ")}</p></div>)}{overview.data.hotspots.length === 0 && <p className="muted-line">No open problems with a known area.</p>}</div>
       </>}
     </section>
     {decide.isError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {(decide.error as Error).message}</div>}

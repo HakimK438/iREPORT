@@ -75,6 +75,10 @@ export interface MyReport { department?: string | null; citizen_message?: string
 export interface AuthorityRow extends IncidentPublic { priority_score: number; level: Severity; reasons: { label: string; pts: number }[]; department: string | null; lat: number | null; lng: number | null; location_source: string | null; ai: AiSummary; nlp: Nlp | null; citizen_message: string | null }
 export interface Hotspot { area: string; open_incidents: number; critical: number; affected: number; unique_citizens: number; confirmations: number; priority_sum: number; impact_score: number; categories: { category: string; count: number }[]; main_problems: string[]; lat: number; lng: number }
 export interface AdminOverview { unresolved_critical: number; departments: { department: string; open: number; critical: number; resolved: number }[]; categories: { category: string; open: number; share_pct: number; recommended_department: string | null; recommendation: string }[]; hotspots: Hotspot[] }
+export interface MapIncident { id: string; public_id: string; title: string; category: string; area: string | null; severity: Severity; status: Status; priority_score: number; level: Severity; affected_count: number; created_at: string; lat: number; lng: number; cluster: number | null }
+export interface MapCluster { id: number; size: number; lat: number; lng: number; radius_m: number; critical: number; priority_sum: number; categories: { category: string; count: number }[]; areas: string[]; incident_ids: string[]; name: string }
+export interface MapArea { area: string; total: number; open: number; critical: number; resolved: number; categories: { category: string; count: number }[]; lat: number; lng: number }
+export interface MapData { incidents: MapIncident[]; clusters: MapCluster[]; areas: MapArea[]; truncated: boolean; method: { name: string; engine: string; eps_m: number; min_points: number; scope: string } }
 export interface Contribution { reports_submitted: number; reports_verified: number; confirmations_given: number; category_corrected: number; label: string | null }
 export interface GeoResolve { area: string | null; method: "polygon" | "nearest_area_centre"; departments: Record<string, string | null> }
 export interface AuthorityDetail extends AuthorityRow { reporters: { name: string; phone: string | null; problem_type: string | null; description: string | null; reported_at: string; ai_category: string | null; ai_confidence: number | null; user_corrected: boolean; ai_source: string | null; ai_disagreement: { image: string; text: string } | null; nlp: Nlp | null; citizen_message: string | null; location_source: string | null }[]; images: { url: string; thumb_url: string }[]; history: HistoryEvent[]; messages: Msg[] }
@@ -121,6 +125,9 @@ export const api = {
   authorityList: (p: Record<string, string | number | boolean | undefined>) => request<Page<AuthorityRow>>(`/authority/incidents${qs(p)}`),
   hotspots: (limit = 5) => request<{ items: Hotspot[] }>(`/authority/hotspots${qs({ limit })}`),
   adminOverview: () => request<AdminOverview>("/admin/overview"),
+  authorityMap: () => request<MapData>("/authority/map"),
+  adminMap: () => request<MapData>("/admin/map"),
+  adminIncident: (id: string) => request<AuthorityDetail>(`/admin/incidents/${id}`),
   authorityStats: () => request<AuthorityStats>("/authority/stats"),
   authorityDetail: (id: string) => request<AuthorityDetail>(`/authority/incidents/${id}`),
   authorityUpdate: (id: string, body: { status?: Status; message?: string; flags?: string[] }) => request<unknown>(`/authority/incidents/${id}/update`, { method: "POST", body }),

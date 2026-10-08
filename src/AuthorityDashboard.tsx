@@ -2,11 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon, type IconName } from "./Icon";
 import { AREAS, CATEGORY_NAMES, STATUSES, ago, type Status } from "./store";
-import { api, type AiSummary, type ApiUser, type AuthorityRow, type Hotspot } from "./api";
+import { api, type ApiUser, type Hotspot } from "./api";
+import { AiChip, Detail, Tag } from "./IncidentDetail";
+import MapDashboard from "./MapDashboard";
+import { categoryLabel, MERGED_CATEGORY } from "./brand";
 
 type Sort = "priority" | "newest" | "oldest" | "affected";
 
-const catIcon: Record<string, IconName> = { Pothole: "road", "Road Damage": "reports", Streetlight: "light", Garbage: "waste", "Water Leakage": "water", Drainage: "map", "Electrical Hazard": "bolt", Other: "plus" };
+const catIcon: Record<string, IconName> = { Pothole: "road", "Road Damage": "road", Streetlight: "light", Garbage: "waste", "Water Leakage": "water", Drainage: "water", "Electrical Hazard": "bolt", Other: "plus" };
 const PAGE = 50;
 
 function useDebounced<T>(value: T, ms: number): T {
@@ -15,17 +18,14 @@ function useDebounced<T>(value: T, ms: number): T {
   return v;
 }
 
-const SOURCE_TEXT: Record<string, string> = { image: "photo", text: "description", "image+text": "photo + description" };
-const Tag = ({ kind }: { kind: "ml" | "rule" | "gis" | "you" }) => <em className={`src-tag src-${kind}`}>{kind === "ml" ? "ML model" : kind === "rule" ? "Rule-based" : kind === "gis" ? "GIS (PostGIS)" : "From citizen"}</em>;
-
-function AiChip({ ai }: { ai: AiSummary }) {
-  if (!ai.category) return <span className="chip muted">No AI result · category chosen by the citizen</span>;
-  const pct = ai.confidence != null ? `${Math.round(ai.confidence * 100)}%` : "";
-  return <span className={`chip${ai.agreement === "disagree" ? " warn" : ""}`}>AI: {ai.category} {pct} · {SOURCE_TEXT[ai.source ?? ""] ?? "—"}{ai.agreement === "agree" ? " · photo and text agree" : ""}{ai.agreement === "disagree" ? " · needs verification (photo and text disagree)" : ""}{ai.user_corrected ? " · citizen changed the category" : ""}</span>;
-}
-
-function mapSrc(lat: number, lng: number) {
-  return `https://www.openstreetmap.org/export/embed.html?bbox=${(lng - 0.004).toFixed(4)}%2C${(lat - 0.003).toFixed(4)}%2C${(lng + 0.004).toFixed(4)}%2C${(lat + 0.003).toFixed(4)}&layer=mapnik&marker=${lat.toFixed(5)}%2C${lng.toFixed(5)}`;
+/** Plain-language reasons for an area's impact score; every line comes from the hotspot's own counts. */
+export function hotspotReasons(h: Hotspot): string[] {
+  const why = [`${h.open_incidents} open incident${h.open_incidents === 1 ? "" : "s"} in the area`];
+  if (h.categories.length > 1) why.push(`${h.categories.length} problem types`);
+  if (h.critical > 0) why.push(`${h.critical} critical`);
+  if (h.unique_citizens > 1) why.push(`${h.unique_citizens} citizens reporting`);
+  if (h.affected > h.open_incidents) why.push(`${h.affected} people affected`);
+  return why;
 }
 
 function HotspotCards({ items }: { items: Hotspot[] }) {
@@ -34,40 +34,8 @@ function HotspotCards({ items }: { items: Hotspot[] }) {
     <div className="hot-top"><b>{h.area}</b><span className="hot-score" title="Impact score: this area's summed incident priority relative to the busiest area (100)">{h.impact_score}</span></div>
     <p>{h.open_incidents} open · {h.critical} critical · {h.unique_citizens} citizen{h.unique_citizens === 1 ? "" : "s"} · {h.confirmations} confirmation{h.confirmations === 1 ? "" : "s"}</p>
     <p className="hot-cats">{h.categories.map(c => `${c.category} ×${c.count}`).join(" · ")}</p>
+    <p className="hot-why muted-line">Impact {h.impact_score}/100 because: {hotspotReasons(h).join(" · ")}</p>
   </div>)}</div></>;
-}
-
-function Detail({ issue, reply, setReply, act, acting }: { issue: AuthorityRow; reply: string; setReply: (v: string) => void; act: (id: string, next: Status | null) => void; acting: boolean }) {
-  // Photo links are signed for 15 minutes, so refresh the open detail every 10 minutes.
-  const detail = useQuery({ queryKey: ["authority", "incident", issue.id], queryFn: () => api.authorityDetail(issue.id), refetchInterval: 10 * 60_000 });
-  const d = detail.data;
-  return <div className="ad-detail">
-    {d?.images[0] ? <img src={d.images[0].url} alt="Evidence photo" loading="lazy" /> : issue.thumb_url ? <img src={issue.thumb_url} alt="Evidence photo" loading="lazy" /> : <div className="no-photo"><Icon name="camera" size={28} /><small>No photo</small></div>}
-    <div className="ad-detail-body">
-      <small>{issue.public_id} · {d ? `reported by ${d.reporters.map(r => r.name).join(", ") || "—"}` : "loading reporters…"} · {issue.severity} severity</small>
-      {d && d.images.length > 1 && <div className="ad-thumbs">{d.images.map((m, k) => <a key={k} href={m.url} target="_blank" rel="noreferrer"><img src={m.thumb_url} alt={`Evidence photo ${k + 1}`} loading="lazy" /></a>)}</div>}
-      {d?.reporters.some(r => r.description) && <p className="ad-desc">{d.reporters.filter(r => r.description).map(r => `“${r.description}”`).join(" · ")}</p>}
-      {d && <div className="ad-intel-grid">
-        <div><h3>Location <Tag kind="gis" /></h3><p>{d.area ?? "Unknown area"} · {d.lat?.toFixed(5)}, {d.lng?.toFixed(5)}<br /><small>point source: {d.location_source ?? "not recorded"}</small></p>{d.lat != null && d.lng != null && <iframe className="ad-map" title="Incident location" loading="lazy" src={mapSrc(d.lat, d.lng)} />}</div>
-        <div><h3>AI classification <Tag kind="ml" /></h3><p><AiChip ai={d.ai} /></p>{d.reporters.some(r => r.ai_disagreement) && <p className="muted-line">Photo said {d.reporters.find(r => r.ai_disagreement)?.ai_disagreement?.image}, description said {d.reporters.find(r => r.ai_disagreement)?.ai_disagreement?.text}.</p>}</div>
-        <div><h3>Reading of the citizen's text <Tag kind="rule" /></h3>{d.nlp ? <ul className="plain"><li>Duration: {d.nlp.duration?.text ?? "not stated"}</li><li>Obstruction: {d.nlp.obstruction ?? "not stated"}</li><li>Hazard: {d.nlp.hazard?.join(", ") ?? "not stated"}</li><li>Urgency: {d.nlp.urgency ?? "—"}</li></ul> : <p className="muted-line">No description was written.</p>}</div>
-        <div><h3>Responsible department</h3><p>{d.department ?? "—"}</p>{d.reporters.some(r => r.citizen_message) && <><h3>Citizen message <Tag kind="you" /></h3>{d.reporters.filter(r => r.citizen_message).map((r, k) => <p className="ad-msg" key={k}>“{r.citizen_message}”</p>)}</>}</div>
-      </div>}
-      <h3>Why this priority ({issue.priority_score}/100) <Tag kind="rule" /></h3>
-      {detail.isPending && <div className="ad-reasons"><span className="skeleton-line w50" /></div>}
-      {detail.isError && <p className="muted-line">Could not load the detail. <button className="text-button" onClick={() => detail.refetch()}>Retry</button></p>}
-      {d && <div className="ad-reasons">{d.reasons.slice(0, 6).map(r => <span key={r.label}>{r.label}<b>+{r.pts}</b></span>)}</div>}
-      <h3>Messages</h3>
-      <div className="thread">{d && d.messages.length === 0 && <p className="muted-line">No messages yet.</p>}{d?.messages.map(m => <div key={m.id} className={`msg ${m.from}`}><small>{m.by} · {ago(m.at)}</small><p>{m.text}</p></div>)}</div>
-      <textarea value={reply} maxLength={1000} onChange={e => setReply(e.target.value)} placeholder="Write a message to the citizen (optional)" rows={3} aria-label="Message to citizen" />
-      <div className="ad-actions">
-        <button className="secondary" onClick={() => act(issue.id, null)} disabled={!reply.trim() || acting}>Send message</button>
-        <button className="secondary" onClick={() => act(issue.id, "Under Review")} disabled={issue.status === "Under Review" || acting}>Under review</button>
-        <button className="secondary" onClick={() => act(issue.id, "In Progress")} disabled={issue.status === "In Progress" || acting}>In progress</button>
-        <button className="primary" onClick={() => act(issue.id, "Resolved")} disabled={issue.status === "Resolved" || acting}><Icon name="check" size={16} /> Mark resolved</button>
-      </div>
-    </div>
-  </div>;
 }
 
 export default function AuthorityDashboard({ user }: { user: ApiUser }) {
@@ -146,13 +114,15 @@ export default function AuthorityDashboard({ user }: { user: ApiUser }) {
     </div>
 
     <p className="muted-line ad-updated" aria-live="polite">{updatedAgo === null ? "Loading…" : updatedAgo < 8 ? "Updated just now" : `Updated ${updatedAgo} s ago`} · refreshes every 20 s</p>
+    <MapDashboard mode="authority" />
     <HotspotCards items={hot.data?.items ?? []} />
 
     <h2 className="ad-h">By category</h2>
     <div className="ad-cats">{CATEGORY_NAMES.map(name => {
-      const c = s?.per_category.find(x => x.category === name) ?? { total: 0, open: 0 };
+      // Legacy Road Damage / Drainage reports are counted under their merged category.
+      const c = (s?.per_category ?? []).filter(x => (MERGED_CATEGORY[x.category] ?? x.category) === name).reduce((a, x) => ({ total: a.total + x.total, open: a.open + x.open }), { total: 0, open: 0 });
       return <button key={name} className={cat === name ? "active" : ""} onClick={() => setCat(cat === name ? "" : name)} aria-pressed={cat === name}>
-        <span><Icon name={catIcon[name] ?? "plus"} size={20} /></span><b>{name}</b><strong>{s ? c.total : "–"}</strong><small>{c.open} open · {c.total - c.open} solved</small>
+        <span><Icon name={catIcon[name] ?? "plus"} size={20} /></span><b>{categoryLabel(name)}</b><strong>{s ? c.total : "–"}</strong><small>{c.open} open · {c.total - c.open} solved</small>
         <i style={{ width: `${c.total ? ((c.total - c.open) / c.total) * 100 : 0}%` }} />
       </button>;
     })}</div>
@@ -181,7 +151,7 @@ export default function AuthorityDashboard({ user }: { user: ApiUser }) {
             <div className={`prio lvl-${issue.level.toLowerCase()}`} title="Priority score out of 100"><b>{issue.priority_score}</b><small>{issue.level}</small></div>
             <button className="ad-main" onClick={() => { setOpenId(open ? null : issue.id); setReply(""); }} aria-expanded={open}>
               <b>{issue.title}</b>
-              <span className="ad-meta"><span><Icon name={catIcon[issue.category] ?? "plus"} size={14} /> {issue.category}</span><span><Icon name="pin" size={14} /> {issue.area ?? "Unknown area"}</span><span><Icon name="community" size={14} /> {issue.affected_count} affected</span><span><Icon name="clock" size={14} /> {ago(issue.created_at)}</span></span>
+              <span className="ad-meta"><span><Icon name={catIcon[issue.category] ?? "plus"} size={14} /> {categoryLabel(issue.category)}</span><span><Icon name="pin" size={14} /> {issue.area ?? "Unknown area"}</span><span><Icon name="community" size={14} /> {issue.affected_count} affected</span><span><Icon name="clock" size={14} /> {ago(issue.created_at)}</span></span>
               {issue.flags.length > 0 && <span className="ad-flags">{issue.flags.map(f => <em key={f}>{f}</em>)}</span>}
               <span className="ad-intel"><AiChip ai={issue.ai} />{issue.department && <span className="chip">{issue.department}</span>}{issue.nlp?.urgency && <span className="chip">text urgency: {issue.nlp.urgency}</span>}{issue.lat != null && issue.lng != null && <span className="chip">{issue.lat.toFixed(4)}, {issue.lng.toFixed(4)}</span>}</span>
               <span className="ad-why">Priority: {issue.reasons.slice(0, 3).map(r => `${r.label} +${r.pts}`).join(" · ")}</span>

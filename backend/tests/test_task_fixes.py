@@ -254,3 +254,26 @@ async def test_geo_resolve_is_public_and_gis_derived(client):
     assert j["area"] == "Colaba" and j["departments"]["Pothole"] == "Roads & Traffic" and j["method"] == "nearest_area_centre"
     far = (await client.get("/geo/resolve", params={"lat": 28.6, "lng": 77.2})).json()  # Delhi: outside the seeded areas
     assert far["area"] is None
+
+
+async def test_map_data_areas_and_dbscan_clusters(client):
+    officer = await make_authority(client)
+    cits = [await register_citizen(client) for _ in range(4)]
+    # two problems ~220 m apart in Colaba -> one cluster; one alone in Andheri -> no cluster
+    await client.post("/reports", json=body(*COLABA), headers=cits[0]["headers"])
+    await client.post("/reports", json=body(COLABA[0] + 0.002, COLABA[1], category="Garbage"), headers=cits[1]["headers"])
+    await client.post("/reports", json=body(*ANDHERI, category="Streetlight"), headers=cits[2]["headers"])
+    m = (await client.get("/authority/map", headers=officer["headers"])).json()
+    assert len(m["incidents"]) == 3 and all(i["lat"] and i["lng"] for i in m["incidents"])
+    assert len(m["clusters"]) == 1 and m["clusters"][0]["size"] == 2 and m["clusters"][0]["areas"] == ["Colaba"]
+    in_cluster = [i for i in m["incidents"] if i["cluster"] is not None]
+    assert {i["area"] for i in in_cluster} == {"Colaba"} and next(i for i in m["incidents"] if i["area"] == "Andheri West")["cluster"] is None
+    assert {a["area"]: a["open"] for a in m["areas"]} == {"Colaba": 2, "Andheri West": 1}
+    assert m["method"]["eps_m"] == 300
+    # admin gets the same map and a read-only detail without phone numbers
+    admin = await admin_headers(client)
+    assert len((await client.get("/admin/map", headers=admin)).json()["incidents"]) == 3
+    d = (await client.get(f"/admin/incidents/{m['incidents'][0]['id']}", headers=admin)).json()
+    assert d["lat"] and all(r["phone"] is None for r in d["reporters"])
+    assert (await client.get("/admin/map", headers=officer["headers"])).status_code == 403
+    assert (await client.get("/authority/map", headers=admin)).status_code == 403

@@ -87,3 +87,19 @@ async def overview(_: Admin, db: Db):
                         "recommendation": f"{c.category} → {c.department}"} for c in cats],
         "hotspots": await svc.hotspots(db, 5),
     }
+
+
+@router.get("/map")
+async def map_view(_: Admin, db: Db):
+    """Same map data as the authority control room (every incident, per-area totals, DBSCAN clusters)."""
+    from .. import incidents as svc
+
+    return await svc.map_data(db)
+
+
+@router.get("/incidents/{incident_id}")
+async def incident_detail(incident_id: uuid.UUID, admin: Admin, db: Db):
+    """Read-only incident detail for the admin site. No phone numbers, and citizen messages are not marked read."""
+    from .authority import build_detail
+
+    return await build_detail(db, incident_id, admin.id)

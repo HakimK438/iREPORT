@@ -7,7 +7,7 @@ export type Approval = "pending" | "approved" | "rejected";
 
 export const STATUSES: Status[] = ["Reported", "Under Review", "In Progress", "Resolved"];
 export const AREAS = ["Andheri West", "Bandra", "Colaba", "Fort", "Dadar", "Goregaon", "Malad", "Borivali"];
-export const CATEGORY_NAMES = ["Pothole", "Road Damage", "Streetlight", "Garbage", "Water Leakage", "Drainage", "Electrical Hazard", "Other"];
+export const CATEGORY_NAMES = ["Pothole", "Garbage", "Streetlight", "Water Leakage", "Electrical Hazard", "Other"];
 export const DEPARTMENTS = ["Roads & Traffic", "Street Lighting", "Solid Waste Management", "Water Supply", "Storm Water Drains", "Electrical Safety", "General / Ward Office"];
 
 /** Approximate centre of each area, used as the default map pin until the citizen shares a location. */

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Icon } from "./Icon";
-import { Brand, categories } from "./brand";
+import { Icon, type IconName } from "./Icon";
+import { Brand, categories, categoryLabel, homeCards, MERGED_CATEGORY } from "./brand";
 import { analyze, api, ApiError, type Analysis, type ReportCreated } from "./api";
 import { compressPhoto, PhotoTooLargeError } from "./compress";
 import { AREA_CENTRES, AREAS } from "./store";
@@ -23,11 +23,21 @@ const SpeechRecognitionImpl = (window as unknown as { SpeechRecognition?: new ()
   ?? (window as unknown as { webkitSpeechRecognition?: new () => Recognition }).webkitSpeechRecognition;
 
 const CAT_NAME: Record<string, { hi: string; mr: string }> = {
-  Pothole: { hi: "गड्ढा", mr: "खड्डा" }, "Road Damage": { hi: "सड़क क्षति", mr: "रस्त्याचे नुकसान" }, Streetlight: { hi: "स्ट्रीटलाइट", mr: "पथदिवा" },
-  Garbage: { hi: "कचरा", mr: "कचरा" }, "Water Leakage": { hi: "पानी रिसाव", mr: "पाणी गळती" }, Drainage: { hi: "नाली", mr: "गटार" },
+  Pothole: { hi: "गड्ढे और सड़क क्षति", mr: "खड्डे आणि रस्त्याचे नुकसान" }, Streetlight: { hi: "खराब स्ट्रीटलाइट", mr: "बिघडलेले पथदिवे" },
+  Garbage: { hi: "कचरा और अपशिष्ट", mr: "कचरा आणि टाकाऊ पदार्थ" }, "Water Leakage": { hi: "पानी और जल निकासी", mr: "पाणी आणि गटारे" },
   "Electrical Hazard": { hi: "बिजली का खतरा", mr: "विजेचा धोका" }, Other: { hi: "अन्य", mr: "इतर" },
 };
-const catName = (lang: Lang, name: string) => (lang === "en" ? name : CAT_NAME[name]?.[lang] ?? name);
+/** One plain line under each category so people know what it covers. */
+const CAT_HINT: Record<string, Record<Lang, string>> = {
+  Pothole: { en: "Potholes, cracks, broken road or footpath", hi: "गड्ढे, दरारें, टूटी सड़क या फुटपाथ", mr: "खड्डे, भेगा, तुटलेला रस्ता किंवा फुटपाथ" },
+  Streetlight: { en: "Street lamp not working", hi: "स्ट्रीट लाइट बंद है", mr: "पथदिवा बंद आहे" },
+  Garbage: { en: "Waste piling up or not collected", hi: "कचरा जमा है या उठाया नहीं गया", mr: "कचरा साचला आहे किंवा उचललेला नाही" },
+  "Water Leakage": { en: "Leaking pipe, flooded road or blocked drain", hi: "पाइप लीक, सड़क पर पानी या जाम नाली", mr: "पाइप गळती, रस्त्यावर पाणी किंवा तुंबलेली गटारे" },
+  "Electrical Hazard": { en: "Loose wires or sparking poles", hi: "खुले तार या चिंगारी देते खंभे", mr: "उघड्या तारा किंवा ठिणग्या देणारे खांब" },
+  Other: { en: "Any other public problem", hi: "कोई अन्य सार्वजनिक समस्या", mr: "इतर कोणतीही सार्वजनिक समस्या" },
+};
+/** Merged legacy names (Road Damage, Drainage) resolve to their citizen-facing category. */
+const catName = (lang: Lang, name: string) => (lang === "en" ? categoryLabel(name) : CAT_NAME[MERGED_CATEGORY[name] ?? name]?.[lang] ?? name);
 
 function mapSrc({ lat, lng }: { lat: number; lng: number }) {
   const dLat = 0.0175, dLng = 0.0195;
@@ -37,6 +47,13 @@ function mapSrc({ lat, lng }: { lat: number; lng: number }) {
 function Tag({ kind, lang }: { kind: "ml" | "rule" | "gis" | "you"; lang: Lang }) {
   const key: StrKey = kind === "ml" ? "tagMl" : kind === "rule" ? "tagRule" : kind === "gis" ? "tagGis" : "tagYou";
   return <em className={`src-tag src-${kind}`}>{tr(lang, key)}</em>;
+}
+
+/** Category photo from public/categories/ (same files as the home cards); the icon is the fallback for categories without a photo. */
+function CategoryThumb({ name, icon }: { name: string; icon: IconName }) {
+  const [ok, setOk] = useState(true);
+  const file = homeCards.find(c => c.flow === name)?.file;
+  return <span className={file && ok ? "cat-thumb" : "cat-thumb cat-icon"}>{file && ok ? <img src={`${import.meta.env.BASE_URL}categories/${file}`} alt="" loading="lazy" width={120} height={72} onError={() => setOk(false)} /> : <Icon name={icon} size={27} />}</span>;
 }
 
 export default function ReportFlow({ open, close, discard, done, lang, initialCategory }: { open: boolean; close: () => void; discard: () => void; done: (created: ReportCreated) => void; lang: Lang; initialCategory?: string }) {
@@ -215,7 +232,7 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
   };
 
   const categoryButtons = (selected: string | null, onPick: (name: string) => void) => (
-    <div className="flow-categories">{categories.map(([name, icon]) => <button className={selected === name ? "selected" : ""} onClick={() => onPick(name)} key={name}><span><Icon name={icon} size={27} /></span><b>{catName(lang, name)}</b>{selected === name && <Icon name="check" />}</button>)}</div>
+    <div className="flow-categories">{categories.map(([name, icon]) => <button className={selected === name ? "selected" : ""} onClick={() => onPick(name)} key={name}><CategoryThumb name={name} icon={icon} /><b>{catName(lang, name)}</b><small>{(CAT_HINT[name] ?? CAT_HINT.Other)[lang]}</small>{selected === name && <Icon name="check" />}</button>)}</div>
   );
 
   const canQuestions = !!category && (questions.length === 0 || !!answers[questions[0].id]);

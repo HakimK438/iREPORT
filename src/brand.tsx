@@ -4,19 +4,30 @@ export function Brand() {
   return <div className="brand"><span className="brand-word"><strong>i</strong>REPORT<i /></span><small>METROPOLITAN MUMBAI</small></div>;
 }
 
+/** Citizen-facing categories. The values are the internal/API names, which are unchanged. */
 export const categories = [
-  ["Pothole", "road"], ["Road Damage", "reports"], ["Streetlight", "light"], ["Garbage", "waste"],
-  ["Water Leakage", "water"], ["Drainage", "map"], ["Electrical Hazard", "bolt"], ["Other", "plus"],
+  ["Pothole", "road"], ["Garbage", "waste"], ["Streetlight", "light"],
+  ["Water Leakage", "water"], ["Electrical Hazard", "bolt"], ["Other", "plus"],
 ] as [string, IconName][];
+
+/** Legacy internal categories (kept valid for historical reports) shown under their merged citizen-facing name. */
+export const MERGED_CATEGORY: Record<string, string> = { "Road Damage": "Pothole", Drainage: "Water Leakage" };
+
+/** English display labels for internal category names, including the merged legacy ones. */
+export const CATEGORY_LABEL: Record<string, string> = {
+  Pothole: "Potholes & Road Damage", Garbage: "Garbage & Waste", Streetlight: "Broken Streetlights",
+  "Water Leakage": "Water & Drainage", "Electrical Hazard": "Electrical Hazards", Other: "Other Civic Issues",
+};
+export const categoryLabel = (name: string) => CATEGORY_LABEL[MERGED_CATEGORY[name] ?? name] ?? name;
 
 /** Home page cards. `file` is looked up in public/categories/; when it is missing the emoji card is shown. */
 export const homeCards = [
   { key: "cat_pothole", emoji: "🕳️", file: "pothole.jpg", flow: "Pothole" },
   { key: "cat_garbage", emoji: "🗑️", file: "garbage.jpg", flow: "Garbage" },
   { key: "cat_streetlight", emoji: "💡", file: "streetlight.jpg", flow: "Streetlight" },
-  { key: "cat_water", emoji: "💧", file: "water-leakage.jpg", flow: "Water Leakage" },
+  { key: "cat_water", emoji: "💧", file: "water-leakage.webp", flow: "Water Leakage" },
   { key: "cat_electrical", emoji: "⚡", file: "electrical.jpg", flow: "Electrical Hazard" },
-  { key: "cat_other", emoji: "🚧", file: "other.jpg", flow: "Other" },
+  { key: "cat_other", emoji: "🚧", file: "other.avif", flow: "Other" },
 ] as const;
 
 export const statusLabel = (s: string) => (s === "Reported" ? "Pending" : s === "Under Review" ? "Under review" : s === "In Progress" ? "In progress" : s);

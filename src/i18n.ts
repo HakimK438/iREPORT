@@ -121,8 +121,8 @@ export const STR = {
   cat_pothole: T("Potholes & Road Damage", "गड्ढे और सड़क क्षति", "खड्डे आणि रस्त्याचे नुकसान"),
   cat_garbage: T("Garbage & Waste", "कचरा और अपशिष्ट", "कचरा आणि टाकाऊ पदार्थ"),
   cat_streetlight: T("Broken Streetlights", "खराब स्ट्रीटलाइट", "बिघडलेले पथदिवे"),
-  cat_water: T("Water Leakage & Flooding", "पानी का रिसाव और जलभराव", "पाणी गळती आणि पूर"),
-  cat_electrical: T("Electrical Problems", "बिजली की समस्याएँ", "विजेच्या समस्या"),
+  cat_water: T("Water & Drainage", "पानी और जल निकासी", "पाणी आणि गटारे"),
+  cat_electrical: T("Electrical Hazards", "बिजली के खतरे", "विजेचे धोके"),
   cat_other: T("Other Civic Issues", "अन्य नागरिक समस्याएँ", "इतर नागरी समस्या"),
   // profile
   homeArea: T("Home area (used for Community only, never as a report location)", "घर का क्षेत्र (केवल कम्युनिटी के लिए, रिपोर्ट स्थान के रूप में कभी नहीं)", "घराचे क्षेत्र (फक्त कम्युनिटीसाठी, अहवाल ठिकाण म्हणून कधीही नाही)"),

@@ -246,3 +246,32 @@ ul.plain{margin:0;padding-left:18px;font-size:13px}
 .ad-stats .warn b{color:var(--amber)}.ad-updated{margin:8px 0}
 .work-list{display:grid;gap:6px;margin:8px 0}.work-row{display:grid;grid-template-columns:200px 1fr auto;gap:10px;align-items:center;font-size:13px}.work-row i{display:block;height:8px;border-radius:6px;background:var(--green);min-width:2px}
 @media(max-width:640px){.rv-list>div{grid-template-columns:1fr}.work-row{grid-template-columns:1fr}}
+
+/* ---- Map dashboard (authority + admin) ---- */
+.md{margin:8px 0 26px}.md-head{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px}.md-head .ad-h{margin:14px 0 8px}
+.md-legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--muted)}.md-legend span{display:inline-flex;align-items:center;gap:5px}.md-legend i{width:11px;height:11px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #c9d0cc}.md-legend i.md-resolved{background:#8a948f}.md-legend i.md-ring{background:rgba(91,63,160,.12);border:2px dashed #5b3fa0;box-shadow:none}
+.md-areas{display:flex;gap:8px;overflow-x:auto;padding:4px 0 10px}.md-areas button{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-start;gap:2px;border:1px solid var(--line);background:#fff;border-radius:12px;padding:9px 14px;text-align:left;transition:.2s}.md-areas button b{font:700 13px "Manrope"}.md-areas button small{font-size:11px;color:var(--muted)}.md-areas button:hover{border-color:#9ca8a2}.md-areas button.active{background:var(--ink);border-color:var(--ink)}.md-areas button.active b,.md-areas button.active small{color:#fff}.md-crit{color:var(--red);font-weight:700}.md-areas button.active .md-crit{color:#ffb4ab}
+.md-toolbar{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin:2px 0 10px}.md-toolbar select{height:42px;border:1px solid var(--line);background:#fff;border-radius:10px;padding:0 12px;font-weight:600}
+.pm-map{width:100%;height:460px;border-radius:16px;border:1px solid var(--line);overflow:hidden;z-index:0;display:grid;place-items:center;color:var(--muted)}
+.md-ml{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start;font-size:12px;color:var(--muted);margin:10px 0 4px;line-height:1.5}
+.md-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:10px;margin-top:14px}
+.md-card{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;text-align:left;background:#fff;border:1px solid var(--line);border-left:5px solid var(--line);border-radius:13px;padding:12px;transition:.2s}.md-card:hover{transform:translateY(-2px);box-shadow:var(--shadow)}.md-card.sel{outline:2px solid var(--ink)}.md-card.done{opacity:.65}
+.md-card.lvl-critical{border-left-color:#b3261e}.md-card.lvl-high{border-left-color:#e8710a}.md-card.lvl-medium{border-left-color:#c9a400}.md-card.lvl-low{border-left-color:#2e7d6b}
+.md-score{display:flex;flex-direction:column;align-items:center;min-width:46px}.md-score b{font:800 20px "Manrope"}.md-score small{font-size:10px;color:var(--muted)}
+.md-card-main{display:flex;flex-direction:column;gap:3px;min-width:0}.md-card-main b{font:700 14px "Manrope";overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.md-card-main small{color:var(--muted);font-size:11px;display:flex;align-items:center;gap:4px;flex-wrap:wrap}.md-card-main .src-tag{align-self:flex-start;margin-left:0}
+.md-backdrop{position:fixed;inset:0;background:rgba(18,32,26,.45);z-index:90}
+.md-drawer{position:fixed;top:0;right:0;bottom:0;width:min(820px,100vw);background:#fff;z-index:91;overflow-y:auto;box-shadow:-20px 0 60px rgba(0,0,0,.2);animation:mdIn .25s ease-out}
+.md-drawer-head{position:sticky;top:0;background:#fff;display:flex;justify-content:space-between;gap:12px;align-items:flex-start;padding:16px 18px;border-bottom:1px solid var(--line);z-index:1}.md-drawer-head h2{font:800 20px "Manrope";margin:8px 0 4px}.md-drawer-head small{color:var(--muted)}
+@keyframes mdIn{from{transform:translateX(40px);opacity:0}to{transform:none;opacity:1}}
+@media(prefers-reduced-motion:reduce){.md-drawer{animation:none}.md-card{transition:none}}
+@media(max-width:700px){.pm-map{height:340px}.md-cards{grid-template-columns:1fr}}
+
+/* Category photos in the report flow */
+.flow-categories button>span.cat-thumb{width:100%;height:60px;border-radius:9px;overflow:hidden;background:#f0f4f1}.flow-categories button>span.cat-thumb img{width:100%;height:100%;object-fit:cover;display:block}.flow-categories button{height:auto;min-height:115px;gap:8px}
+
+/* Report-flow category tiles: whole illustration visible, every tile the same size */
+.flow-categories button{height:auto;min-height:0;justify-content:flex-start;gap:6px}
+.flow-categories button>span.cat-thumb{width:100%;height:auto;aspect-ratio:16/10;padding:6px;background:#f3f6f4;border-radius:10px;display:grid;place-items:center}
+.flow-categories button>span.cat-thumb img{width:100%;height:100%;object-fit:contain;object-position:center}
+.flow-categories button>span.cat-icon{color:var(--green)}.flow-categories button>span.cat-icon svg{width:38px;height:38px}
+.flow-categories button>b{font-size:13px}.flow-categories button>small{font-size:11px;line-height:1.35;color:var(--muted)}
