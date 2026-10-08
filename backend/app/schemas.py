@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from .answers import unknown_answers
+
 Lang = Literal["en", "hi", "mr"]
 StatusName = Literal["Reported", "Under Review", "In Progress", "Resolved"]
 SeverityName = Literal["Low", "Medium", "High", "Critical"]
@@ -142,6 +144,15 @@ class ReportIn(Strict):
     flags: list[str] = Field(default_factory=list, max_length=8)
     citizen_message: str | None = Field(default=None, max_length=500)
     ai: AiIn | None = None
+    # Quick answers from the flow ({question id: option id}); unknown keys or values are rejected with 422.
+    answers: dict[str, str] | None = Field(default=None, max_length=10)
+
+    @field_validator("answers")
+    @classmethod
+    def known_answers(cls, v: dict[str, str] | None) -> dict[str, str] | None:
+        if v and (bad := unknown_answers(v)):
+            raise ValueError(f"Unknown answers: {', '.join(bad)}")
+        return v
 
     @field_validator("problem_type", "address_text", "citizen_message")
     @classmethod

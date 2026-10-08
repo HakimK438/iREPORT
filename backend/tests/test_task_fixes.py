@@ -302,3 +302,36 @@ async def test_map_data_areas_and_dbscan_clusters(client):
     assert d["lat"] and all(r["phone"] is None for r in d["reporters"])
     assert (await client.get("/admin/map", headers=officer["headers"])).status_code == 403
     assert (await client.get("/authority/map", headers=admin)).status_code == 403
+
+
+# ---------- Quick answers ----------
+
+
+async def test_answers_validated_stored_and_raise_flags(client):
+    c = await register_citizen(client)
+    officer = await make_authority(client)
+    bad = await client.post("/reports", json=body(*COLABA, answers={"colour": "red"}), headers=c["headers"])
+    assert bad.status_code == 422
+    bad_value = await client.post("/reports", json=body(*COLABA, answers={"blocks": "maybe"}), headers=c["headers"])
+    assert bad_value.status_code == 422
+    r = await client.post("/reports", json=body(*COLABA, category="Garbage", answers={"blocks": "foot", "people": "many"}), headers=c["headers"])
+    assert r.status_code == 201, r.text
+    created = r.json()
+    assert created["affected_count"] == 1  # "people" is stored, never used as a count
+    detail = (await client.get(f"/authority/incidents/{created['incident_id']}", headers=officer["headers"])).json()
+    assert "Blocks footpath" in detail["flags"]
+    stored = await _answers_of(created["report_id"])
+    assert stored == {"blocks": "foot", "people": "many"}
+
+
+async def test_report_without_answers_still_works(client):
+    c = await register_citizen(client)
+    r = await client.post("/reports", json=body(*COLABA), headers=c["headers"])
+    assert r.status_code == 201 and (await _answers_of(r.json()["report_id"])) is None
+
+
+async def _answers_of(report_id):
+    from app.db import SessionLocal
+
+    async with SessionLocal() as db:
+        return await db.scalar(text("SELECT answers FROM reports WHERE id = :i"), {"i": report_id})

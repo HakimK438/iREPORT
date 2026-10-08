@@ -127,6 +127,7 @@ class Report(Base):
     ai_source: Mapped[str | None] = mapped_column(Text)
     ai_disagreement: Mapped[dict | None] = mapped_column(JSONB)
     nlp: Mapped[dict | None] = mapped_column(JSONB)
+    answers: Mapped[dict | None] = mapped_column(JSONB)
 
 
 class Media(Base):

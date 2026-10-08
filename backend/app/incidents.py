@@ -11,6 +11,7 @@ from .ai import rules
 from .config import get_settings
 from .errors import ApiError
 from .priority import level_of, priority_of
+from .answers import flags_from_answers
 from .refdata import CategoryRef, nearest_area, ref
 from .schemas import ReportIn
 from .storage import get_storage
@@ -246,7 +247,7 @@ async def create_report(db: AsyncSession, user_id: uuid.UUID, body: ReportIn) ->
         if owned != len(media_ids):
             raise ApiError(422, "invalid_media", "One of the photos was not found. Please add it again.")
 
-    severity, flags = rules.assess(category.name, body.problem_type, body.description, body.flags)
+    severity, flags = rules.assess(category.name, body.problem_type, body.description, [*body.flags, *flags_from_answers(body.answers)])
     ai_cat: CategoryRef | None = ref.category(body.ai.category) if body.ai and body.ai.category else None
     point = {"lat": body.lat, "lng": body.lng}
 
@@ -293,14 +294,14 @@ async def create_report(db: AsyncSession, user_id: uuid.UUID, body: ReportIn) ->
     ai = body.ai
     report_id = await db.scalar(text("""
         INSERT INTO reports (incident_id, user_id, problem_type, description, ai_category_id, ai_confidence, model_version, user_corrected,
-                             location_source, citizen_message, ai_source, ai_disagreement, nlp)
-        VALUES (:i, :u, :p, :d, :ai, :conf, :mv, :corrected, :src, :msg, :ais, CAST(:dis AS jsonb), CAST(:nlp AS jsonb)) RETURNING id"""), {
+                             location_source, citizen_message, ai_source, ai_disagreement, nlp, answers)
+        VALUES (:i, :u, :p, :d, :ai, :conf, :mv, :corrected, :src, :msg, :ais, CAST(:dis AS jsonb), CAST(:nlp AS jsonb), CAST(:answers AS jsonb)) RETURNING id"""), {
         "i": incident_id, "u": user_id, "p": body.problem_type, "d": body.description or None,
         "ai": ai_cat.id if ai_cat else None, "conf": ai.confidence if ai else None,
         "mv": ai.model_version if ai else None, "corrected": bool(ai_cat and ai_cat.id != category.id),
         "src": body.location_source, "msg": body.citizen_message,
         "ais": ai.source if ai else None, "dis": json.dumps(ai.disagreement) if ai and ai.disagreement else None,
-        "nlp": json.dumps(nlp) if nlp else None,
+        "nlp": json.dumps(nlp) if nlp else None, "answers": json.dumps(body.answers) if body.answers else None,
     })
     if media_ids:
         await db.execute(text("UPDATE media SET report_id = :r WHERE id = ANY(CAST(:ids AS uuid[])) AND uploader_id = :u AND report_id IS NULL"), {"r": report_id, "ids": [str(m) for m in media_ids], "u": user_id})

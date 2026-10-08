@@ -216,7 +216,7 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
       const res = await api.createReport({
         media_ids: mediaIds, category: effective, problem_type: problem, description: fullText || undefined,
         lat: spot.lat, lng: spot.lng, location_source: spot.source, address_text: landmark.trim() || spot.label || undefined,
-        flags, citizen_message: message.trim() || undefined,
+        flags, citizen_message: message.trim() || undefined, answers: Object.keys(answers).length ? answers : undefined,
         ai: result?.category ? {
           category: result.category, confidence: result.confidence, model_version: result.model_version,
           source: result.source === "none" ? undefined : result.source, disagreement: result.disagreement ?? undefined,
