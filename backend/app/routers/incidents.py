@@ -146,3 +146,15 @@ async def unread_count(citizen: Citizen, db: Db):
           AND m.created_at > coalesce((SELECT messages_seen_at FROM users WHERE id = :u), '-infinity')
           AND m.incident_id IN (SELECT incident_id FROM reports WHERE user_id = :u)"""), {"u": citizen.id})
     return {"unread": count}
+
+
+@router.get("/geo/resolve")
+async def resolve_point(db: Db, lat: float = Query(ge=-90, le=90), lng: float = Query(ge=-180, le=180)):
+    """GIS-derived context for a point: the area it falls in (PostGIS polygon, else nearest area centre) and the
+    department responsible for each category. The report flow shows this on the review screen."""
+    ward_id = await svc.resolve_ward(db, lat, lng)
+    return {
+        "area": ref.wards.get(ward_id) if ward_id else None,
+        "method": "polygon" if ward_id and await db.scalar(text("SELECT geom IS NOT NULL FROM wards WHERE id = :w"), {"w": ward_id}) else "nearest_area_centre",
+        "departments": {c.name: ref.departments.get(c.department_id) for c in ref.categories.values()},
+    }

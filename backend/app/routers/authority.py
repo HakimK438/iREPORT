@@ -108,13 +108,15 @@ async def list_incidents(
 async def stats(_: Authority, db: Db):
     """Totals plus per-category and per-ward counts, in one query."""
     row = (await db.execute(text("""
-        WITH s AS MATERIALIZED (SELECT category_id, ward_id, status, priority_score FROM incidents)
+        WITH s AS MATERIALIZED (SELECT category_id, ward_id, status, priority_score, created_at FROM incidents)
         SELECT
           (SELECT json_build_object(
               'total', count(*), 'open', count(*) FILTER (WHERE status <> 'Resolved'),
               'in_progress', count(*) FILTER (WHERE status = 'In Progress'),
               'resolved', count(*) FILTER (WHERE status = 'Resolved'),
-              'critical_open', count(*) FILTER (WHERE status <> 'Resolved' AND priority_score >= 65)) FROM s) AS totals,
+              'critical_open', count(*) FILTER (WHERE status <> 'Resolved' AND priority_score >= 65),
+              'high_open', count(*) FILTER (WHERE status <> 'Resolved' AND priority_score >= 48 AND priority_score < 65),
+              'new_24h', count(*) FILTER (WHERE created_at > now() - interval '24 hours')) FROM s) AS totals,
           (SELECT coalesce(json_agg(json_build_object('id', category_id, 'total', total, 'open', open)), '[]') FROM
               (SELECT category_id, count(*) AS total, count(*) FILTER (WHERE status <> 'Resolved') AS open FROM s GROUP BY category_id) x) AS per_category,
           (SELECT coalesce(json_agg(json_build_object('id', ward_id, 'total', total, 'open', open)), '[]') FROM

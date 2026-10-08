@@ -245,3 +245,12 @@ async def test_hotspots_and_admin_overview(client):
     assert ov["unresolved_critical"] >= 1 and ov["hotspots"] and any(c["recommendation"] == "Pothole → Roads & Traffic" for c in ov["categories"])
     assert next(d for d in ov["departments"] if d["department"] == "Roads & Traffic")["open"] == 1
     assert (await client.get("/admin/overview", headers=officer["headers"])).status_code == 403
+
+
+async def test_geo_resolve_is_public_and_gis_derived(client):
+    r = await client.get("/geo/resolve", params={"lat": COLABA[0], "lng": COLABA[1]})
+    assert r.status_code == 200
+    j = r.json()
+    assert j["area"] == "Colaba" and j["departments"]["Pothole"] == "Roads & Traffic" and j["method"] == "nearest_area_centre"
+    far = (await client.get("/geo/resolve", params={"lat": 28.6, "lng": 77.2})).json()  # Delhi: outside the seeded areas
+    assert far["area"] is None

@@ -216,3 +216,33 @@ small.err{color:var(--red);font-size:12px}
 .ad-desc{font-size:13px;color:var(--muted);margin:6px 0}
 .loading-modal{display:grid;place-items:center;min-height:200px;color:var(--muted)}
 @media(max-width:640px){.user-chip>b,.user-chip>button em{display:none}.ad-row{grid-template-columns:auto 1fr;grid-template-areas:"c p" "m m" "s s"}.ad-row>input{grid-area:c}.ad-row>.prio{grid-area:p;width:52px;height:52px}.ad-row>.ad-main{grid-area:m}.ad-row>.pill{grid-area:s;justify-self:start}.timeline.t4{grid-template-columns:repeat(4,110px)}.mobile-nav.staff{grid-template-columns:repeat(3,1fr)}.ad-bulk{bottom:84px}.admin-row{grid-template-columns:auto 1fr}.admin-actions{grid-column:1/-1}.ad-toolbar select{flex:1 1 45%}}
+
+/* ---- user-testing fixes: report flow, source tags, hotspots, success animation ---- */
+.src-tag{font-style:normal;font-size:10px;font-weight:700;letter-spacing:.3px;border-radius:6px;padding:2px 6px;margin-left:6px;vertical-align:middle;white-space:nowrap}
+.src-ml{background:#e7f0ff;color:#27518a}.src-rule{background:#fff3df;color:#8a4e0a}.src-gis{background:#e3f3ec;color:#0d5a42}.src-you{background:#eee9f8;color:#4a3590}
+.q-block{margin:14px 0}.q-block h3{font:700 15px "Manrope";margin:0 0 8px}
+.rv-card,.rv-ai{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0}
+.rv-ai h3{font:700 14px "Manrope";margin:0 0 8px;display:flex;align-items:center;gap:6px}
+.rv-photos{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:10px}.rv-photos img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:10px}
+.rv-list{margin:0;display:grid;gap:8px}.rv-list>div{display:grid;grid-template-columns:minmax(120px,36%) 1fr;gap:10px;font-size:13px}.rv-list dt{color:var(--muted);font-weight:600}.rv-list dd{margin:0}.rv-list .high{color:var(--red);font-weight:700}
+.rv-agree{display:flex;align-items:center;gap:6px;color:var(--green);font-weight:700;font-size:13px;margin:8px 0}
+.rv-verify{background:#fff3df}.rv-about{font-size:12px;color:var(--muted);margin-top:8px}.rv-about summary{cursor:pointer}
+.loc-search{display:flex;gap:8px;margin:10px 0}.loc-search label{flex:1;display:flex;align-items:center;gap:8px;border:1px solid #d3d9d5;border-radius:10px;padding:0 12px;background:#fff}.loc-search input{border:0;outline:0;flex:1;padding:11px 0;font:inherit;background:transparent}
+.loc-hits{list-style:none;margin:0 0 10px;padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden}.loc-hits button{width:100%;text-align:left;background:#fff;border:0;border-bottom:1px solid var(--line);padding:10px 12px;font:inherit;cursor:pointer;display:flex;gap:6px;align-items:center}.loc-hits button:hover{background:var(--green2)}
+.discard{display:block;margin:14px auto 0;color:var(--muted)}
+.cc-photo{display:flex;flex-direction:column;align-items:stretch;gap:10px}.cc-media{display:block;aspect-ratio:4/3;border-radius:12px;overflow:hidden;background:var(--green2);width:100%}.cc-media img{width:100%;height:100%;object-fit:cover;display:block}.cc-emoji{display:grid;place-items:center;height:100%;font-size:54px}
+.check-anim{width:84px;height:84px;display:block;margin:0 auto 12px}.check-circle{stroke:var(--green);stroke-width:3;stroke-dasharray:151;stroke-dashoffset:151;animation:ck-draw .5s ease-out forwards}.check-mark{stroke:var(--green);stroke-width:4;stroke-linecap:round;stroke-linejoin:round;stroke-dasharray:36;stroke-dashoffset:36;animation:ck-draw .35s .45s ease-out forwards}
+@keyframes ck-draw{to{stroke-dashoffset:0}}
+@media (prefers-reduced-motion:reduce){.check-circle,.check-mark{animation:none;stroke-dashoffset:0}}
+.contrib-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;margin:12px 0}.contrib-card h3{font:700 14px "Manrope";margin:0 0 10px}
+.contrib-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.contrib-grid b{display:block;font:800 26px "Manrope"}.contrib-grid small{color:var(--muted);font-size:11px}.contrib-label{color:var(--green);font-weight:700;display:flex;gap:6px;align-items:center;margin:10px 0 0}
+.mini-report{width:100%;display:flex;align-items:center;gap:10px;background:#fafbfa;border:1px solid var(--line);border-radius:10px;padding:8px;margin-top:8px;text-align:left;cursor:pointer;font:inherit}.mini-report img,.mini-nophoto{width:48px;height:48px;border-radius:8px;object-fit:cover;flex:none;background:var(--green2);display:grid;place-items:center}.mini-report>span:nth-child(2){flex:1;min-width:0;display:grid}.mini-report small{color:var(--muted)}
+.no-photo{display:grid;place-items:center;gap:4px;color:var(--muted);background:#eef1ee;border-radius:12px;min-height:110px;font-size:12px}
+.chip{display:inline-block;font-size:11px;background:#eef1ee;border-radius:8px;padding:3px 8px;margin:2px 4px 2px 0;color:var(--ink)}.chip.warn{background:#fff3df;color:#8a4e0a;font-weight:600}.chip.muted{color:var(--muted)}
+.ad-intel,.ad-why,.ad-msg{display:block;margin-top:5px;font-size:12px;color:var(--muted);font-weight:400}.ad-msg{font-style:italic}
+.ad-intel-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:12px 0}.ad-map{width:100%;height:150px;border:0;border-radius:10px;margin-top:6px}
+ul.plain{margin:0;padding-left:18px;font-size:13px}
+.hot-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;margin:8px 0 16px}.hot-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px}.hot-top{display:flex;justify-content:space-between;align-items:center}.hot-score{background:var(--green2);color:var(--green);font-weight:800;border-radius:99px;padding:4px 10px}.hot-card p{margin:6px 0 0;font-size:12px;color:var(--muted)}.hot-cats{color:var(--ink)!important}
+.ad-stats .warn b{color:var(--amber)}.ad-updated{margin:8px 0}
+.work-list{display:grid;gap:6px;margin:8px 0}.work-row{display:grid;grid-template-columns:200px 1fr auto;gap:10px;align-items:center;font-size:13px}.work-row i{display:block;height:8px;border-radius:6px;background:var(--green);min-width:2px}
+@media(max-width:640px){.rv-list>div{grid-template-columns:1fr}.work-row{grid-template-columns:1fr}}

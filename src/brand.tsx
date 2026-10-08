@@ -9,17 +9,15 @@ export const categories = [
   ["Water Leakage", "water"], ["Drainage", "map"], ["Electrical Hazard", "bolt"], ["Other", "plus"],
 ] as [string, IconName][];
 
-export const problems: Record<string, string[]> = {
-  Pothole: ["Small", "Medium", "Large", "Multiple potholes", "Dangerous road condition"],
-  Streetlight: ["Not working", "Flickering", "Broken pole", "Damaged wiring"],
-  Garbage: ["Overflowing", "Illegal dumping", "Uncollected garbage"],
-};
-
-export const photos = {
-  hero: "https://images.unsplash.com/photo-1728325444171-088ccff86658?crop=entropy&cs=tinysrgb&fit=crop&fm=jpg&q=88&w=1400",
-  road: "https://images.unsplash.com/photo-1684588744065-235ea5065b2b?crop=entropy&cs=tinysrgb&fit=crop&fm=jpg&q=86&w=1000",
-  city: "https://images.unsplash.com/photo-1665570124900-2eba10b696f0?crop=entropy&cs=tinysrgb&fit=crop&fm=jpg&q=86&w=1000",
-};
+/** Home page cards. `file` is looked up in public/categories/; when it is missing the emoji card is shown. */
+export const homeCards = [
+  { key: "cat_pothole", emoji: "🕳️", file: "pothole.jpg", flow: "Pothole" },
+  { key: "cat_garbage", emoji: "🗑️", file: "garbage.jpg", flow: "Garbage" },
+  { key: "cat_streetlight", emoji: "💡", file: "streetlight.jpg", flow: "Streetlight" },
+  { key: "cat_water", emoji: "💧", file: "water-leakage.jpg", flow: "Water Leakage" },
+  { key: "cat_electrical", emoji: "⚡", file: "electrical.jpg", flow: "Electrical Hazard" },
+  { key: "cat_other", emoji: "🚧", file: "other.jpg", flow: "Other" },
+] as const;
 
 export const statusLabel = (s: string) => (s === "Reported" ? "Pending" : s === "Under Review" ? "Under review" : s === "In Progress" ? "In progress" : s);
 

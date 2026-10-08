@@ -69,14 +69,26 @@ export interface HistoryEvent { status: Status; at: string }
 export interface Page<T> { items: T[]; next_cursor: string | null; total?: number | null }
 
 export interface IncidentPublic { id: string; public_id: string; title: string; category: string; area: string | null; address_text: string | null; severity: Severity; status: Status; flags: string[]; affected_count: number; created_at: string; updated_at: string; distance_m?: number; thumb_url: string | null; confirmed_by_me?: boolean; reported_by_me?: boolean }
-export interface MyReport { report_id: string; incident_id: string; public_id: string; title: string; category: string; area: string | null; address_text: string | null; severity: Severity; status: Status; affected_count: number; created_at: string; updated_at: string; image_url: string | null; thumb_url: string | null; history: HistoryEvent[]; messages: Msg[] }
-export interface AuthorityRow extends IncidentPublic { priority_score: number; level: Severity }
-export interface AuthorityDetail extends AuthorityRow { lat: number; lng: number; reasons: { label: string; pts: number }[]; reporters: { name: string; phone: string | null; problem_type: string | null; description: string | null; reported_at: string }[]; images: { url: string; thumb_url: string }[]; history: HistoryEvent[]; messages: Msg[] }
-export interface AuthorityStats { total: number; open: number; in_progress: number; resolved: number; critical_open: number; per_category: { category: string; total: number; open: number }[]; per_ward: { area: string | null; total: number; open: number }[] }
+export interface Nlp { duration: { text: string; days: number } | null; obstruction: string | null; hazard: string[] | null; urgency: string | null; flags: string[] }
+export interface AiSummary { category: string | null; confidence: number | null; source: string | null; agreement: "agree" | "disagree" | null; disagreement: { image: string; text: string } | null; user_corrected: boolean }
+export interface MyReport { department?: string | null; citizen_message?: string | null; location_source?: string | null; ai?: { category: string | null; confidence: number | null; source: string | null; user_corrected: boolean }; report_id: string; incident_id: string; public_id: string; title: string; category: string; area: string | null; address_text: string | null; severity: Severity; status: Status; affected_count: number; created_at: string; updated_at: string; image_url: string | null; thumb_url: string | null; history: HistoryEvent[]; messages: Msg[] }
+export interface AuthorityRow extends IncidentPublic { priority_score: number; level: Severity; reasons: { label: string; pts: number }[]; department: string | null; lat: number | null; lng: number | null; location_source: string | null; ai: AiSummary; nlp: Nlp | null; citizen_message: string | null }
+export interface Hotspot { area: string; open_incidents: number; critical: number; affected: number; unique_citizens: number; confirmations: number; priority_sum: number; impact_score: number; categories: { category: string; count: number }[]; main_problems: string[]; lat: number; lng: number }
+export interface AdminOverview { unresolved_critical: number; departments: { department: string; open: number; critical: number; resolved: number }[]; categories: { category: string; open: number; share_pct: number; recommended_department: string | null; recommendation: string }[]; hotspots: Hotspot[] }
+export interface Contribution { reports_submitted: number; reports_verified: number; confirmations_given: number; category_corrected: number; label: string | null }
+export interface GeoResolve { area: string | null; method: "polygon" | "nearest_area_centre"; departments: Record<string, string | null> }
+export interface AuthorityDetail extends AuthorityRow { reporters: { name: string; phone: string | null; problem_type: string | null; description: string | null; reported_at: string; ai_category: string | null; ai_confidence: number | null; user_corrected: boolean; ai_source: string | null; ai_disagreement: { image: string; text: string } | null; nlp: Nlp | null; citizen_message: string | null; location_source: string | null }[]; images: { url: string; thumb_url: string }[]; history: HistoryEvent[]; messages: Msg[] }
+export interface AuthorityStats { total: number; open: number; in_progress: number; resolved: number; critical_open: number; high_open: number; new_24h: number; per_category: { category: string; total: number; open: number }[]; per_ward: { area: string | null; total: number; open: number }[] }
 export interface AdminAuthority { id: string; name: string; email: string; phone: string | null; area: string | null; department: string | null; employee_id: string; approval: "pending" | "approved" | "rejected"; created_at: string; decided_at: string | null }
 export interface AdminStats { pending: number; approved: number; rejected: number; citizens: number; incidents: number; reports: number }
-export interface Analysis { media_ids: string[]; thumb_urls: string[]; category: string | null; confidence: number | null; top3: { category: string; confidence: number }[]; uncertain: boolean; not_civic: boolean; disagreement: { image: string; text: string } | null; severity: Severity | null; flags: string[]; explanation: string | null; gps_suggestion: { lat: number; lng: number } | null; model_version: string | null; source: string }
-export interface ReportCreated { report_id: string; incident_id: string; incident_public_id: string; merged: boolean; affected_count: number; severity: Severity; status: Status }
+export interface PhotoQuality { label: "good" | "blurry" | "dark" | "low resolution"; width: number; height: number; brightness: number; sharpness: number }
+export interface Analysis {
+  media_ids: string[]; thumb_urls: string[]; category: string | null; confidence: number | null; top3: { category: string; confidence: number }[]; uncertain: boolean; not_civic: boolean;
+  disagreement: { image: string; text: string } | null; agreement: "agree" | "disagree" | null; severity: Severity | null; flags: string[]; explanation: string | null;
+  gps_suggestion: { lat: number; lng: number } | null; model_version: string | null; source: "image" | "text" | "image+text" | "none";
+  ai_available: boolean; models: { image: string; text: string }; photo_quality: PhotoQuality[]; photo_errors: { index: number; code: string; message: string }[]; nlp: Nlp | null;
+}
+export interface ReportCreated { report_id: string; incident_id: string; incident_public_id: string; merged: boolean; affected_count: number; severity: Severity; status: Status; area: string | null; department: string | null }
 
 const qs = (params: Record<string, string | number | boolean | undefined | null>) => {
   const p = new URLSearchParams();
@@ -93,6 +105,8 @@ export const api = {
   logout: () => request<void>("/auth/logout", { method: "POST" }).catch(() => undefined),
   me: () => request<ApiUser>("/me"),
   patchMe: (body: Partial<Pick<ApiUser, "name" | "phone" | "area" | "lang">>) => request<ApiUser>("/me", { method: "PATCH", body }),
+  contribution: () => request<Contribution>("/me/contribution"),
+  resolveGeo: (lat: number, lng: number) => request<GeoResolve>(`/geo/resolve${qs({ lat, lng })}`),
   exportMe: () => request<unknown>("/me/export"),
   deleteMe: () => request<void>("/me", { method: "DELETE" }),
 
@@ -105,6 +119,8 @@ export const api = {
   unread: () => request<{ unread: number }>("/messages/unread-count"),
 
   authorityList: (p: Record<string, string | number | boolean | undefined>) => request<Page<AuthorityRow>>(`/authority/incidents${qs(p)}`),
+  hotspots: (limit = 5) => request<{ items: Hotspot[] }>(`/authority/hotspots${qs({ limit })}`),
+  adminOverview: () => request<AdminOverview>("/admin/overview"),
   authorityStats: () => request<AuthorityStats>("/authority/stats"),
   authorityDetail: (id: string) => request<AuthorityDetail>(`/authority/incidents/${id}`),
   authorityUpdate: (id: string, body: { status?: Status; message?: string; flags?: string[] }) => request<unknown>(`/authority/incidents/${id}/update`, { method: "POST", body }),
