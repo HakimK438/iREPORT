@@ -119,6 +119,9 @@ async def test_analyze_contract_with_image_model(client):
     assert a["ai_available"] is True and a["source"] in ("image", "image+text") and a["confidence"] is not None
     assert a["models"]["image"] == "used" and a["photo_quality"][0]["label"] in ("good", "blurry", "dark", "low resolution")
     assert a["nlp"]["duration"]["days"] == 4
+    # (c) image + text: both per-source confidences, the blend sits between them
+    assert a["image_model_active"] is True and a["image_confidence"] is not None and a["text_confidence"] is not None
+    assert a["department"]
 
 
 async def test_analyze_without_image_model_is_text_only(client, monkeypatch):
@@ -129,6 +132,8 @@ async def test_analyze_without_image_model_is_text_only(client, monkeypatch):
     assert a["models"]["image"] == "unavailable" and a["model_version"].startswith("txt")
     assert "The image shows" not in (a["explanation"] or "")  # no image evidence without an image model
     assert len(a["media_ids"]) == 1  # the photo is still stored
+    # (b) text only
+    assert a["image_confidence"] is None and a["text_confidence"] == a["confidence"] and a["image_model_active"] is False
 
 
 async def test_analyze_nothing_available(client, monkeypatch):
@@ -137,6 +142,8 @@ async def test_analyze_nothing_available(client, monkeypatch):
     c = await register_citizen(client)
     a = (await client.post("/ai/analyze", files=files(jpeg((230, 20, 20))), headers=c["headers"])).json()
     assert a["ai_available"] is False and a["source"] == "none" and a["confidence"] is None and a["category"] is None
+    # (a) nothing available: no per-source numbers, and the response is still 200
+    assert a["image_confidence"] is None and a["text_confidence"] is None and a["image_model_active"] is False
 
 
 async def test_corrupt_photo_does_not_discard_the_others(client):
@@ -171,6 +178,8 @@ async def test_agreement_is_reported_when_both_models_run(client):
     assert a["agreement"] == "agree" and a["disagreement"] is None
     d = (await client.post("/ai/analyze", files=files(jpeg((230, 20, 20))), data={"text": "garbage is overflowing from the bin, uncollected waste"}, headers=c["headers"])).json()
     assert d["agreement"] in ("disagree", None)
+    # (d) per-source numbers are reported separately even when the models disagree
+    assert d["image_confidence"] is not None and d["text_confidence"] is not None
 
 
 async def test_report_stores_ai_agreement_and_message_for_authority(client):
@@ -231,20 +240,36 @@ async def test_contribution_counts_are_real(client):
 
 async def test_hotspots_and_admin_overview(client):
     officer = await make_authority(client)
-    citizens = [await register_citizen(client) for _ in range(4)]
+    citizens = [await register_citizen(client) for _ in range(6)]
+    # three open incidents ~220 m apart in Colaba -> one DBSCAN hotspot (eps 400 m, min 3)
     await client.post("/reports", json=body(*COLABA), headers=citizens[0]["headers"])
     await client.post("/reports", json=body(COLABA[0] + 0.002, COLABA[1], category="Garbage"), headers=citizens[1]["headers"])
+    await client.post("/reports", json=body(COLABA[0] + 0.004, COLABA[1], category="Garbage"), headers=citizens[3]["headers"])
+    # one far away (not clustered) and one in Colaba that gets resolved (excluded)
     await client.post("/reports", json=body(*ANDHERI, category="Electrical Hazard", description="live wire sparking"), headers=citizens[2]["headers"])
+    done = (await client.post("/reports", json=body(COLABA[0] + 0.003, COLABA[1] + 0.002, category="Streetlight"), headers=citizens[4]["headers"])).json()
+    await client.post(f"/authority/incidents/{done['incident_id']}/update", json={"status": "Resolved"}, headers=officer["headers"])
     hs = (await client.get("/authority/hotspots", headers=officer["headers"])).json()["items"]
-    colaba = next(h for h in hs if h["area"] == "Colaba")
-    assert colaba["open_incidents"] == 2 and colaba["unique_citizens"] == 2 and {c["category"] for c in colaba["categories"]} == {"Pothole", "Garbage"}
-    assert max(h["impact_score"] for h in hs) == 100 and all(0 <= h["impact_score"] <= 100 for h in hs)
+    assert len(hs) == 1
+    h = hs[0]
+    assert h["area"] == "Colaba" and h["incident_count"] == 3 and h["unique_citizens"] == 3 and h["confirmations"] == 0
+    assert {c["category"]: c["count"] for c in h["categories"]} == {"Pothole": 1, "Garbage": 2} and len(h["incident_ids"]) == 3
+    assert done["incident_id"] not in h["incident_ids"] and 0 <= h["impact_score"] <= 100
+    assert (await client.get("/authority/hotspots", headers=citizens[5]["headers"])).status_code == 403
 
     admin = await admin_headers(client)
     ov = (await client.get("/admin/overview", headers=admin)).json()
     assert ov["unresolved_critical"] >= 1 and ov["hotspots"] and any(c["recommendation"] == "Pothole → Roads & Traffic" for c in ov["categories"])
     assert next(d for d in ov["departments"] if d["department"] == "Roads & Traffic")["open"] == 1
     assert (await client.get("/admin/overview", headers=officer["headers"])).status_code == 403
+
+
+def test_impact_score_formula():
+    from app.incidents import impact_score
+
+    assert impact_score(80, 3) == round(0.6 * 80 + 0.4 * 24)
+    assert impact_score(100, 20) == 100  # count part is capped, total is capped
+    assert impact_score(0, 3) == round(0.4 * 24)
 
 
 async def test_geo_resolve_is_public_and_gis_derived(client):

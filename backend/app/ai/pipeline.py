@@ -135,6 +135,10 @@ def analyze(images: list[Image.Image], text: str | None, problem_type: str | Non
         models=status,
         inference_ms=round(models.image.last_ms, 1) if p_img and models.image else None,
         nlp=rules.extract_nlp(text, severity, flags),
+        # Each model's own top-1 probability (None when that model did not run). `confidence` is the blend.
+        image_confidence=round(_top_civic(p_img)[1], 4) if p_img else None,
+        text_confidence=round(_top_civic(p_txt)[1], 4) if p_txt else None,
+        image_model_active=models.image is not None,
     )
     if status["image"] == "error" or status["text"] == "error":
         result["uncertain"] = True

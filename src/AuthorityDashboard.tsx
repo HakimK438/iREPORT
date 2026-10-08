@@ -18,9 +18,9 @@ function useDebounced<T>(value: T, ms: number): T {
   return v;
 }
 
-/** Plain-language reasons for an area's impact score; every line comes from the hotspot's own counts. */
+/** Plain-language reasons for a hotspot's impact score; every line comes from the hotspot's own counts. */
 export function hotspotReasons(h: Hotspot): string[] {
-  const why = [`${h.open_incidents} open incident${h.open_incidents === 1 ? "" : "s"} in the area`];
+  const why = [`${h.open_incidents} open incident${h.open_incidents === 1 ? "" : "s"} within 400 m of each other`];
   if (h.categories.length > 1) why.push(`${h.categories.length} problem types`);
   if (h.critical > 0) why.push(`${h.critical} critical`);
   if (h.unique_citizens > 1) why.push(`${h.unique_citizens} citizens reporting`);
@@ -28,10 +28,10 @@ export function hotspotReasons(h: Hotspot): string[] {
   return why;
 }
 
-function HotspotCards({ items }: { items: Hotspot[] }) {
+function HotspotCards({ items, onPick }: { items: Hotspot[]; onPick: (area: string) => void }) {
   if (items.length === 0) return null;
-  return <><h2 className="ad-h">Hotspots <Tag kind="gis" /></h2><div className="hot-grid">{items.map(h => <div className="hot-card" key={h.area}>
-    <div className="hot-top"><b>{h.area}</b><span className="hot-score" title="Impact score: this area's summed incident priority relative to the busiest area (100)">{h.impact_score}</span></div>
+  return <><h2 className="ad-h">Hotspots <Tag kind="gis" /></h2><div className="hot-grid">{items.map(h => <div className="hot-card" key={h.id} role="button" tabIndex={0} title="Show this area in the list" onClick={() => onPick(h.area)} onKeyDown={e => { if (e.key === "Enter") onPick(h.area); }}>
+    <div className="hot-top"><b>{h.area}</b><span className="hot-score" title="Impact score: 60% worst incident priority + 40% incident count (8 points each, max 100)">{h.impact_score}</span></div>
     <p>{h.open_incidents} open · {h.critical} critical · {h.unique_citizens} citizen{h.unique_citizens === 1 ? "" : "s"} · {h.confirmations} confirmation{h.confirmations === 1 ? "" : "s"}</p>
     <p className="hot-cats">{h.categories.map(c => `${c.category} ×${c.count}`).join(" · ")}</p>
     <p className="hot-why muted-line">Impact {h.impact_score}/100 because: {hotspotReasons(h).join(" · ")}</p>
@@ -115,7 +115,7 @@ export default function AuthorityDashboard({ user }: { user: ApiUser }) {
 
     <p className="muted-line ad-updated" aria-live="polite">{updatedAgo === null ? "Loading…" : updatedAgo < 8 ? "Updated just now" : `Updated ${updatedAgo} s ago`} · refreshes every 20 s</p>
     <MapDashboard mode="authority" />
-    <HotspotCards items={hot.data?.items ?? []} />
+    <HotspotCards items={hot.data?.items ?? []} onPick={a => (AREAS as readonly string[]).includes(a) && setArea(a)} />
 
     <h2 className="ad-h">By category</h2>
     <div className="ad-cats">{CATEGORY_NAMES.map(name => {

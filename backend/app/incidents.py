@@ -78,38 +78,53 @@ def authority_row(row) -> dict:
     return d
 
 
-HOTSPOT_SQL = """
-WITH o AS (SELECT * FROM incidents WHERE status <> 'Resolved' AND ward_id IS NOT NULL)
-SELECT w.name AS area, count(*) AS open_incidents, sum(o.priority_score)::int AS priority_sum, sum(o.affected_count)::int AS affected,
-       count(*) FILTER (WHERE o.priority_score >= 65) AS critical,
-       avg(ST_Y(o.location::geometry)) AS lat, avg(ST_X(o.location::geometry)) AS lng,
-       (SELECT count(DISTINCT r.user_id) FROM reports r JOIN o o2 ON o2.id = r.incident_id WHERE o2.ward_id = o.ward_id) AS citizens,
-       (SELECT count(*) FROM confirmations f JOIN o o3 ON o3.id = f.incident_id WHERE o3.ward_id = o.ward_id) AS confirmations,
+# Hotspots: DBSCAN over the PostGIS points of open incidents from the last 30 days (UTM 43N, so eps is in
+# metres). A hotspot is >= HOTSPOT_MIN_POINTS open incidents chained within HOTSPOT_EPS_M of each other.
+# Individual incidents stay separate rows; this only groups them for the authority's attention.
+HOTSPOT_EPS_M = 400
+HOTSPOT_MIN_POINTS = 3
+HOTSPOT_DAYS = 30
+
+HOTSPOT_SQL = f"""
+WITH o AS (
+  SELECT i.id, i.category_id, i.ward_id, i.priority_score, i.affected_count, i.location,
+         ST_ClusterDBSCAN(ST_Transform(i.location::geometry, 32643), eps := {HOTSPOT_EPS_M}, minpoints := {HOTSPOT_MIN_POINTS}) OVER () AS cid
+  FROM incidents i
+  WHERE i.status <> 'Resolved' AND i.created_at > now() - make_interval(days => {HOTSPOT_DAYS})
+), c AS (SELECT * FROM o WHERE cid IS NOT NULL)
+SELECT c.cid, count(*)::int AS incident_count, max(c.priority_score)::int AS max_priority, sum(c.priority_score)::int AS priority_sum,
+       sum(c.affected_count)::int AS affected, (sum(c.affected_count) - count(*))::int AS confirmations,
+       count(*) FILTER (WHERE c.priority_score >= 65)::int AS critical,
+       avg(ST_Y(c.location::geometry)) AS lat, avg(ST_X(c.location::geometry)) AS lng,
+       array_agg(c.id) AS incident_ids,
+       (SELECT count(DISTINCT r.user_id) FROM reports r JOIN c c2 ON c2.id = r.incident_id WHERE c2.cid = c.cid)::int AS citizens,
+       (SELECT w.name FROM c c3 JOIN wards w ON w.id = c3.ward_id WHERE c3.cid = c.cid GROUP BY w.name ORDER BY count(*) DESC, w.name LIMIT 1) AS area,
        (SELECT json_agg(json_build_object('category', cn, 'count', cnt) ORDER BY cnt DESC, cn) FROM
-           (SELECT c.name AS cn, count(*) AS cnt FROM o o4 JOIN categories c ON c.id = o4.category_id WHERE o4.ward_id = o.ward_id GROUP BY c.name) q) AS categories
-FROM o JOIN wards w ON w.id = o.ward_id
-GROUP BY o.ward_id, w.name
-ORDER BY priority_sum DESC, open_incidents DESC
-LIMIT :n
+           (SELECT cat.name AS cn, count(*) AS cnt FROM c c4 JOIN categories cat ON cat.id = c4.category_id WHERE c4.cid = c.cid GROUP BY cat.name) q) AS categories
+FROM c GROUP BY c.cid
 """
 
 
+def impact_score(max_priority: int, incident_count: int) -> int:
+    """Impact score (0-100) of a hotspot: 60 % the worst incident's priority score, 40 % how many open
+    incidents are in the cluster (8 points each, capped at 100). It is a plain formula, not an AI output."""
+    return min(100, round(0.6 * max_priority + 0.4 * min(100, 8 * incident_count)))
+
+
 async def hotspots(db: AsyncSession, limit: int = 5) -> list[dict]:
-    """Open incidents grouped by area (the area is derived from each incident's PostGIS point).
-    impact_score = 100 * (area's summed incident priority scores) / (largest area's sum), so the top
-    hotspot is 100 and the rest are relative to it. Individual incidents are not merged."""
-    rows = (await db.execute(text(HOTSPOT_SQL), {"n": limit})).all()
-    top = max((r.priority_sum for r in rows), default=0) or 1
+    """DBSCAN hotspots of open incidents (last 30 days), highest impact first."""
     out = []
-    for r in rows:
+    for r in (await db.execute(text(HOTSPOT_SQL))).all():
         cats = r.categories or []
         out.append({
-            "area": r.area, "open_incidents": r.open_incidents, "critical": r.critical, "affected": r.affected,
-            "unique_citizens": r.citizens, "confirmations": r.confirmations, "priority_sum": r.priority_sum,
-            "impact_score": round(100 * r.priority_sum / top), "categories": cats, "main_problems": [c["category"] for c in cats[:2]],
-            "lat": r.lat, "lng": r.lng,
+            "id": r.cid, "area": r.area or "Outside mapped areas", "incident_count": r.incident_count, "open_incidents": r.incident_count,
+            "critical": r.critical, "affected": r.affected, "unique_citizens": r.citizens, "confirmations": r.confirmations,
+            "priority_sum": r.priority_sum, "impact_score": impact_score(r.max_priority, r.incident_count),
+            "categories": cats, "main_problems": [c["category"] for c in cats[:2]],
+            "lat": r.lat, "lng": r.lng, "incident_ids": r.incident_ids,
         })
-    return out
+    out.sort(key=lambda h: (-h["impact_score"], -h["incident_count"], h["id"]))
+    return out[:limit]
 
 
 # --- Map dashboard -------------------------------------------------------------------------------

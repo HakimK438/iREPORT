@@ -303,7 +303,9 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
           {result && !result.ai_available && <p className="muted-line">{shots.length > 0 && result.media_ids.length > 0 ? tr(lang, "noImageModel") : tr(lang, "aiUnavailable")}</p>}
           {result && result.ai_available && <dl className="rv-list">
             <div><dt>{tr(lang, "detected")} <Tag kind="ml" lang={lang} /></dt><dd><b>{result.category ? catName(lang, result.category) : "—"}</b></dd></div>
-            <div><dt>{tr(lang, "confidence")}</dt><dd>{pct !== null ? `${pct}% · ${sourceText}` : "—"}{pct !== null && !sure ? ` · ${tr(lang, "lowConf")}` : ""}</dd></div>
+            <div><dt>{tr(lang, "confidence")}</dt><dd>{pct !== null ? (result.image_confidence != null && result.text_confidence != null
+              ? `${tr(lang, "fromPhotoSrc")} ${Math.round(result.image_confidence * 100)}% · ${tr(lang, "fromTextSrc")} ${Math.round(result.text_confidence * 100)}%${result.agreement === "agree" ? ` · ${tr(lang, "aiHigh")}` : ""}`
+              : `${pct}% · ${sourceText}`) : "—"}{pct !== null && !sure ? ` · ${tr(lang, "lowConf")}` : ""}</dd></div>
             {imageUsed && result.explanation && <div><dt>{tr(lang, "photoEvidence")} <Tag kind="ml" lang={lang} /></dt><dd>{result.explanation}</dd></div>}
             {!imageUsed && textUsed && result.explanation && <div><dt>{tr(lang, "textEvidence")} <Tag kind="ml" lang={lang} /></dt><dd>{result.explanation}</dd></div>}
             {result.flags.length > 0 && <div><dt>{tr(lang, "riskFlags")} <Tag kind="rule" lang={lang} /></dt><dd>{result.flags.join(", ")}</dd></div>}

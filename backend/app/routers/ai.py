@@ -10,6 +10,7 @@ from ..config import get_settings
 from ..deps import Citizen, Db
 from ..errors import ApiError
 from ..models import Media
+from ..refdata import ref
 from ..storage import get_storage, new_keys
 
 router = APIRouter(prefix="/ai", tags=["ai"])
@@ -70,9 +71,13 @@ async def analyze(
         log.exception("analyze failed")
         result = pipeline.combine(None, None, s.ai_uncertain_below)
         result.update(severity=None, flags=[], explanation=None, model_version=None, source="none", inference_ms=None,
-                      ai_available=False, models={"image": "error", "text": "error"}, nlp=None)
+                      ai_available=False, models={"image": "error", "text": "error"}, nlp=None,
+                      image_confidence=None, text_confidence=None, image_model_active=pipeline.models.image is not None)
+    basis = result.get("category") or category
+    cat = ref.category(basis) if basis else None
     gps = next((p.gps for p in processed if p.gps), None)
     result.update(
+        department=ref.departments.get(cat.department_id) if cat else None,
         media_ids=media_ids, thumb_urls=thumbs, lang=lang, photo_errors=photo_errors,
         photo_quality=[p.quality for p in processed],
         gps_suggestion={"lat": gps[0], "lng": gps[1]} if gps else None,
