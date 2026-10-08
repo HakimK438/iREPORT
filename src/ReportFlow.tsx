@@ -84,7 +84,9 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
   shotsRef.current = shots;
   useEffect(() => () => { shotsRef.current.forEach(s => URL.revokeObjectURL(s.url)); recRef.current?.stop(); abortRef.current?.abort(); }, []);
 
-  const mapped = useMemo(() => (category ? fromAnswers(category, answers) : { problem: "Damaged", flags: [] as string[], addons: [] as string[] }), [category, answers]);
+  /* The quick answers belong to the category chosen in step 1; if the citizen switches to another category (for example the AI suggestion) they no longer apply. */
+  const sameCategory = !finalCategory || finalCategory === category;
+  const mapped = useMemo(() => (category && sameCategory ? fromAnswers(category, answers) : { problem: "Damaged", flags: [] as string[], addons: [] as string[] }), [category, answers, sameCategory]);
   const problem = mapped.problem;
   const questions = category ? QUESTIONS[category] ?? [] : [];
   const fullText = [description.trim(), ...mapped.addons].filter(Boolean).join(" ").slice(0, 500);
@@ -216,7 +218,7 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
       const res = await api.createReport({
         media_ids: mediaIds, category: effective, problem_type: problem, description: fullText || undefined,
         lat: spot.lat, lng: spot.lng, location_source: spot.source, address_text: landmark.trim() || spot.label || undefined,
-        flags, citizen_message: message.trim() || undefined, answers: Object.keys(answers).length ? answers : undefined,
+        flags, citizen_message: message.trim() || undefined, answers: sameCategory && Object.keys(answers).length ? answers : undefined,
         ai: result?.category ? {
           category: result.category, confidence: result.confidence, model_version: result.model_version,
           source: result.source === "none" ? undefined : result.source, disagreement: result.disagreement ?? undefined,

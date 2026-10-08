@@ -96,7 +96,12 @@ def analyze(images: list[Image.Image], text: str | None, problem_type: str | Non
     p_img = p_txt = None
     status = {"image": "no_photo" if not images else "unavailable", "text": "no_text"}
     photos_used = 0
-    if images and models.image:
+    # The image model only knows the classes it was trained on. If the citizen already chose a category it
+    # has no data for (e.g. Drainage), its answer would be a guess among the wrong classes: skip it.
+    covered = chosen_category is None or chosen_category in models.image.labels if models.image else False
+    if images and models.image and not covered:
+        status["image"] = "category_not_covered"
+    if images and models.image and covered:
         per_photo = []
         for im in images:
             try:
@@ -128,7 +133,7 @@ def analyze(images: list[Image.Image], text: str | None, problem_type: str | Non
     result.update(
         severity=severity, flags=flags,
         # The photo sentence is only produced when an image model really ran.
-        explanation=rules.explanation(basis, from_image=p_img is not None, flags=flags) if result["category"] else None,
+        explanation=rules.explanation(basis, from_image=p_img is not None, flags=flags, confidence=(p_img or {}).get(basis)) if result["category"] else None,
         model_version="/".join(versions) or None,
         source=source,
         ai_available=result["category"] is not None,

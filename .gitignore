@@ -27,3 +27,8 @@ logs/
 # beside it.
 /.plugins/
 /.opencode-skills/
+
+# image model data and runs (large, third-party licences)
+ml/data/raw/
+ml/data/images/
+ml/runs/

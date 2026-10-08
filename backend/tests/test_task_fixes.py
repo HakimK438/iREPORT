@@ -133,7 +133,7 @@ async def test_analyze_without_image_model_is_text_only(client, monkeypatch):
     a = (await client.post("/ai/analyze", files=files(jpeg((230, 20, 20))), data={"text": "garbage pile not collected for a week"}, headers=c["headers"])).json()
     assert a["source"] == "text" and a["ai_available"] is True and a["confidence"] is not None
     assert a["models"]["image"] == "unavailable" and a["model_version"].startswith("txt")
-    assert "The image shows" not in (a["explanation"] or "")  # no image evidence without an image model
+    assert "photo resembles" not in (a["explanation"] or "")  # no photo sentence without an image model
     assert len(a["media_ids"]) == 1  # the photo is still stored
     # (b) text only
     assert a["image_confidence"] is None and a["text_confidence"] == a["confidence"] and a["image_model_active"] is False
@@ -369,3 +369,12 @@ async def test_me_summary_counts_and_level(client):
     s2 = (await client.get("/me/summary", headers=a["headers"])).json()
     assert s2["incidents_resolved"] == 1 and s2["level"] == "contributor"
     assert (await client.get("/me/summary")).status_code == 401
+
+
+async def test_image_model_skipped_for_categories_it_was_not_trained_on(client, monkeypatch):
+    """A model trained on a subset of classes must not override a category it has never seen."""
+    monkeypatch.setattr(pipeline.models.image, "labels", ["Pothole", "Road Damage", "Streetlight", "Garbage", "Other", "not_civic"])
+    c = await register_citizen(client)
+    a = (await client.post("/ai/analyze", files=files(jpeg((230, 20, 20))), data={"category": "Drainage"}, headers=c["headers"])).json()
+    assert a["models"]["image"] == "category_not_covered" and a["image_confidence"] is None and a["image_model_active"] is True
+    assert len(a["media_ids"]) == 1  # the photo is still stored as evidence

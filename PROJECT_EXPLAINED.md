@@ -15,7 +15,7 @@ Authority: control room (priority list, hotspots, AI/NLP evidence) → status/me
 
 ## AI (what is real)
 - **Text model**: char n-gram TF-IDF + logistic regression, trained on 280 hand-written demo sentences, held-out macro-F1 0.73. Demonstration only.
-- **Image model**: none shipped (`backend/models/img-1.0.onnx` absent by design, DECISIONS #22). With no image model, photos are stored and never used to guess a category. Tests use a tiny colour-based stand-in ONNX file.
+- **Image model**: `backend/models/img-1.0.onnx` (linear probe on frozen EfficientNet-Lite0, 6 classes, DECISIONS #54). Tests use a tiny stand-in model. If the file is absent the API still works and the citizen picks the category.
 - `/ai/analyze` always returns: `category, confidence, source (image|text|image+text|none), model_version, uncertain, not_civic, severity, flags, explanation, top3, ai_available, models{image,text}, agreement, disagreement, photo_quality[], photo_errors[], nlp, media_ids, gps_suggestion`.
 - Multi-photo: probabilities are averaged over the photos that succeeded; an unreadable photo is skipped and reported in `photo_errors`.
 - **Photo quality** (rule-based, Pillow/NumPy): resolution, brightness, blur (Laplacian variance). Heuristic thresholds, not ML.

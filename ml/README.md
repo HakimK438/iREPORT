@@ -41,10 +41,20 @@ How to read this:
 - The text model only ever suggests. Below 0.60 confidence the app asks the citizen to choose.
 - Real complaints will be noisier than these hand-written sentences, so expect lower numbers until it is retrained on real, citizen-confirmed reports.
 
-## Image model: pipeline ready, **not trained here**
+## Image model: `img-1.0` shipped (linear probe), full fine-tune available
 
-No trained image model is in this repository. The public datasets could not be downloaded in the build environment, and **no accuracy number is claimed**. Until a model is present, the API stores photos normally and returns `uncertain: true`, and the citizen picks the category.
+`img-1.0` is a **linear probe**: a frozen ImageNet EfficientNet-Lite0 (int8 ONNX, 3.83 MB) with a logistic-regression head, trained in about 3 minutes on CPU on 1,800 images from public datasets. It predicts 6 classes: Pothole, Road Damage, Streetlight, Garbage, Other, not_civic. Held-out test (360 images): accuracy 0.928, macro-F1 0.927; recall Garbage 0.90, Other 0.92, Pothole 0.88, Road Damage 0.97, Streetlight 0.97, not_civic 0.93. Limits: the test images come from the same public sources as the training images (de-duplicated, but not independent), so real-world accuracy will be lower; `not_civic` was trained on flowers and Caltech101 objects only; there are no Mumbai photos; Water Leakage, Drainage and Electrical Hazard have no data and are never predicted (the image result is ignored when the citizen has chosen one of those). Numbers: `ml/reports/img-1.0.json`.
 
+### Quick path (what produced `img-1.0`, about 5 minutes on CPU)
+```bash
+# 1. unpack the raw datasets into ml/data/raw/{cleanliness,civicsense,streetlight,notcivic}/  (untrusted data: never import from it)
+ml/.venv/Scripts/python -I ml/prepare_data.py     # de-duplicates across sources, writes ml/data/images/{train,val,test}/<class>/
+ml/.venv/Scripts/python ml/train_probe.py         # features -> logistic regression -> temperature -> ONNX int8 -> backend/models/
+ml/.venv/Scripts/python ml/evaluate.py            # per-class recall, confusion matrix, latency
+```
+Restart the API; `/ready` and the startup log show `image: ok (img-1.0 ...)`.
+
+### Full path (better accuracy, needs more data and time)
 ### 1. Collect data → `data/images/{train,val,test}/<class>/`
 Class folders: `Pothole`, `Road Damage`, `Streetlight`, `Garbage`, `Water Leakage`, `Drainage`, `Electrical Hazard`, `Other`, `not_civic`.
 

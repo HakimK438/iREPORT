@@ -45,7 +45,7 @@ cd backend && python -m venv .venv && .venv/Scripts/pip install -r requirements-
 ml/.venv/Scripts/python -m pytest ml/tests                     # text runtime == scikit-learn
 ```
 
-There are 85 backend tests and 2 ML tests, all passing. They cover:
+There are 86 backend tests and 2 ML tests, all passing. They cover:
 - auth: refresh rotation and reuse detection, rate limits, role checks, authority approval and revocation
 - the merge rule (50 m, same category, open, under 14 days), with no double counting
 - keyset paging returning every row exactly once
@@ -60,7 +60,7 @@ Image tests use a tiny generated ONNX stand-in, so the real ONNX Runtime path ru
 
 See [ml/README.md](ml/README.md).
 - **Text:** trained and shipped (`backend/models/txt-1.0.npz`, 0.14 MB). Measured on a held-out split: macro-F1 0.73 (5-fold CV 0.72 ± 0.08) on a small hand-written seed set. Retrain on real reports.
-- **Image:** the full pipeline is ready (`train_image.py`, then `export_onnx.py` with int8 and the accuracy comparison, then `evaluate.py`), but **no trained image model is included and no image accuracy is claimed** (see DECISIONS.md #22). Until `backend/models/img-1.0.onnx` exists, photos are stored and the citizen picks the category, which is the spec's "never block on the AI" path. Drop the trained file in and restart; `/ready` shows it loaded.
+- **Image:** `img-1.0` is a **linear probe**: a frozen ImageNet EfficientNet-Lite0 (int8 ONNX, 3.83 MB) with a logistic-regression head, trained in about 3 minutes on CPU on 1,800 images from public datasets. It predicts 6 classes: Pothole, Road Damage, Streetlight, Garbage, Other, not_civic. Held-out test (360 images): accuracy 0.928, macro-F1 0.927; recall Garbage 0.90, Other 0.92, Pothole 0.88, Road Damage 0.97, Streetlight 0.97, not_civic 0.93. Limits: the test images come from the same public sources as the training images (de-duplicated, but not independent), so real-world accuracy will be lower; `not_civic` was trained on flowers and Caltech101 objects only; there are no Mumbai photos; Water Leakage, Drainage and Electrical Hazard have no data and are never predicted (the image result is ignored when the citizen has chosen one of those). Numbers: `ml/reports/img-1.0.json`. Retrain or upgrade with `ml/prepare_data.py`, `ml/train_probe.py` (fast) or `ml/train_image.py` (full fine-tune), then `ml/evaluate.py`.
 
 ## Measured performance (2026-10-07, dev laptop, Docker Desktop)
 

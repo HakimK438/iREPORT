@@ -37,15 +37,16 @@ DEFAULT_FLAGS = {
     "Streetlight": ["Night-time hazard"],
 }
 
+# What each category means. This describes the CATEGORY; it never claims what a photo contains.
 EXPLANATIONS = {
-    "Pothole": "The image shows a depressed, broken road surface with traffic exposure.",
-    "Road Damage": "The image shows cracked or uneven road surface that can affect vehicles and pedestrians.",
-    "Streetlight": "The image shows a street light or pole that appears damaged or not working.",
-    "Garbage": "The image shows waste collected or dumped in a public space.",
-    "Water Leakage": "The image shows water escaping from a pipe or flowing where it should not.",
-    "Drainage": "The image shows a blocked, open or overflowing drain or manhole.",
-    "Electrical Hazard": "The image shows exposed wiring or electrical equipment that may be unsafe.",
-    "Other": "The image shows a public-space problem that does not fit the main categories.",
+    "Pothole": "Pothole: a depressed, broken road surface with traffic exposure.",
+    "Road Damage": "Road Damage: cracked or uneven road surface that can affect vehicles and pedestrians.",
+    "Streetlight": "Streetlight: a street light or pole that is damaged or not working.",
+    "Garbage": "Garbage: waste collected or dumped in a public space.",
+    "Water Leakage": "Water Leakage: water escaping from a pipe or flowing where it should not.",
+    "Drainage": "Drainage: a blocked, open or overflowing drain or manhole.",
+    "Electrical Hazard": "Electrical Hazard: exposed wiring or electrical equipment that may be unsafe.",
+    "Other": "Other: a public-space problem that does not fit the main categories.",
 }
 TEXT_EXPLANATION = "Your description mentions words usually used for {category} problems."
 _HIGH_PROBLEM = re.compile(r"dangerous|large|multiple|broken|damaged|overflowing|illegal|unsafe", re.I)
@@ -102,8 +103,14 @@ def assess(category: str, problem_type: str | None, description: str | None, ext
     return severity_for(category, problem_type, flags, severe), flags
 
 
-def explanation(category: str, from_image: bool, flags: list[str]) -> str:
-    base = EXPLANATIONS.get(category, EXPLANATIONS["Other"]) if from_image else TEXT_EXPLANATION.format(category=category.lower())
+def explanation(category: str, from_image: bool, flags: list[str], confidence: float | None = None) -> str:
+    """One sentence for the citizen. With an image model it says what the model's output was ("resembles"),
+    never what the photo shows."""
+    if from_image:
+        pct = f" ({round(confidence * 100)} %)" if confidence is not None else ""
+        base = f"The photo resembles a {category}{pct}. {EXPLANATIONS.get(category, EXPLANATIONS['Other'])}"
+    else:
+        base = TEXT_EXPLANATION.format(category=category.lower())
     risky = [f.lower() for f in flags if f in ("Live wiring", "Injury reported", "Near school", "Near hospital", "Flood risk")]
     return f"{base} Risk noted: {', '.join(risky)}." if risky else base
 
