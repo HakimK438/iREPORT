@@ -95,6 +95,9 @@ async def test_two_reports_two_images_stay_linked(client):
 
     mine = {i["report_id"]: i for i in (await client.get("/reports/mine", headers=c["headers"])).json()["items"]}
     assert mine[r1["report_id"]]["image_url"] != mine[r2["report_id"]]["image_url"]
+    # the public feed links each incident to its own photo too
+    feed = {i["id"]: i for i in (await client.get("/incidents/nearby", params={"lat": COLABA[0], "lng": COLABA[1], "radius": 50000, "limit": 50})).json()["items"]}
+    assert feed[r1["incident_id"]]["thumb_url"] and feed[r1["incident_id"]]["thumb_url"] != feed[r2["incident_id"]]["thumb_url"]
 
     # another citizen cannot attach my draft photo to their report
     other = await register_citizen(client)
@@ -210,6 +213,20 @@ async def test_report_stores_ai_agreement_and_message_for_authority(client):
     ("garbage blocking the gate of my building", None, "entrance", None),
     ("live wire hanging near hospital", None, None, "live wire"),
     ("पाणी साचले आहे दोन आठवडे", 14, None, "water"),
+    ("The pothole has been lying here for four days and is blocking the footpath", 4, "footpath", None),
+    ("for a week now the drain is blocked", 7, None, None),
+    ("pichle 3 din se light band hai", 3, None, None),
+    ("एक हफ्ते से फुटपाथ पर कचरा", 7, "footpath", None),
+    ("blocking the road for 5 days", 5, "road", None),
+    ("फुटपाथवर कचरा दोन महिन्यांपासून", 60, "footpath", None),
+    ("it has been 10 days", 10, None, None),
+    ("3 din se road par paani", 3, None, "water"),
+    # negatives: nothing stated -> None, never a guess
+    ("garbage here", None, None, None),
+    ("the road is bad", None, None, None),
+    ("कई दिनों से कचरा पड़ा है", None, None, None),
+    ("खड्डा आहे", None, None, None),
+    ("there is a hole", None, None, None),
 ])
 def test_nlp_extraction(sentence, duration_days, obstruction, hazard):
     n = rules.extract_nlp(sentence, "Medium", [])
