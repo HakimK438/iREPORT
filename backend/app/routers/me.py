@@ -81,3 +81,25 @@ async def delete_me(principal: CurrentUser, db: Db):
     response = Response(status_code=204)
     response.delete_cookie(COOKIE, path=COOKIE_PATH)
     return response
+
+
+@router.get("/me/contribution")
+async def contribution(principal: CurrentUser, db: Db):
+    """Real counts only: reports submitted, reports verified (resolved, or backed by another citizen's
+    report or confirmation) and confirmations given. The one plain label needs verified >= 3 and a
+    low category-correction rate; it is never earned by volume alone."""
+    row = (await db.execute(text("""
+        SELECT
+          (SELECT count(*) FROM reports WHERE user_id = :u) AS submitted,
+          (SELECT count(*) FROM reports r JOIN incidents i ON i.id = r.incident_id WHERE r.user_id = :u AND (
+              i.status = 'Resolved'
+              OR EXISTS (SELECT 1 FROM confirmations f WHERE f.incident_id = i.id AND f.user_id <> :u)
+              OR EXISTS (SELECT 1 FROM reports r2 WHERE r2.incident_id = i.id AND r2.user_id <> :u))) AS verified,
+          (SELECT count(*) FROM confirmations WHERE user_id = :u) AS confirmations_given,
+          (SELECT count(*) FROM reports WHERE user_id = :u AND user_corrected) AS corrected"""), {"u": principal.id})).one()
+    corrected_rate = row.corrected / row.submitted if row.submitted else 0.0
+    trusted = row.verified >= 3 and corrected_rate <= 0.25
+    return {
+        "reports_submitted": row.submitted, "reports_verified": row.verified, "confirmations_given": row.confirmations_given,
+        "category_corrected": row.corrected, "label": "Trusted contributor" if trusted else None,
+    }

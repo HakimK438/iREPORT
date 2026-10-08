@@ -72,51 +72,70 @@ def combine(p_img: dict[str, float] | None, p_txt: dict[str, float] | None, unce
     else:
         p = p_img or p_txt
     if not p:
-        return {"category": None, "confidence": None, "top3": [], "uncertain": True, "not_civic": False, "disagreement": None}
+        return {"category": None, "confidence": None, "top3": [], "uncertain": True, "not_civic": False, "disagreement": None, "agreement": None}
     ranked = sorted(CATEGORIES, key=lambda c: -p.get(c, 0.0))
     top1, conf = ranked[0], p.get(ranked[0], 0.0)
     not_civic = p.get(NOT_CIVIC, 0.0) > conf
     disagreement = None
+    agreement = None  # "agree" / "disagree" only when both models produced a result
     if p_img and p_txt:
         (ic, ip), (tc, tp) = _top_civic(p_img), _top_civic(p_txt)
         if ic != tc and ip >= DISAGREE_AT and tp >= DISAGREE_AT and p_img.get(NOT_CIVIC, 0.0) < ip:
             disagreement = {"image": ic, "text": tc}
+        agreement = "disagree" if disagreement else "agree" if ic == tc else None
     return {
         "category": top1, "confidence": round(conf, 4),
         "top3": [{"category": c, "confidence": round(p.get(c, 0.0), 4)} for c in ranked[:3]],
         "uncertain": bool(not_civic or disagreement or conf < uncertain_below),
-        "not_civic": bool(not_civic), "disagreement": disagreement,
+        "not_civic": bool(not_civic), "disagreement": disagreement, "agreement": agreement,
     }
 
 
 def analyze(images: list[Image.Image], text: str | None, problem_type: str | None, chosen_category: str | None, uncertain_below: float) -> dict:
+    """images may be empty. A photo whose inference fails is skipped; the others are still averaged."""
     p_img = p_txt = None
-    errors = []
+    status = {"image": "no_photo" if not images else "unavailable", "text": "no_text"}
+    photos_used = 0
     if images and models.image:
-        try:
-            per_photo = [models.image.predict(im) for im in images]
+        per_photo = []
+        for im in images:
+            try:
+                per_photo.append(models.image.predict(im))
+            except Exception:  # noqa: BLE001
+                log.exception("image inference failed for one photo")
+        photos_used = len(per_photo)
+        if per_photo:
             p_img = {k: sum(p[k] for p in per_photo) / len(per_photo) for k in per_photo[0]}
-        except Exception:  # noqa: BLE001
-            log.exception("image inference failed")
-            errors.append("image")
-    if text and text.strip() and models.text:
-        try:
-            p_txt = models.text.predict(text)
-        except Exception:  # noqa: BLE001
-            log.exception("text inference failed")
-            errors.append("text")
+            status["image"] = "used" if photos_used == len(images) else f"used ({photos_used} of {len(images)} photos)"
+        else:
+            status["image"] = "error"
+    if text and text.strip():
+        if models.text:
+            try:
+                p_txt = models.text.predict(text)
+                status["text"] = "used" if p_txt else "no_known_words"
+            except Exception:  # noqa: BLE001
+                log.exception("text inference failed")
+                status["text"] = "error"
+        else:
+            status["text"] = "unavailable"
     result = combine(p_img, p_txt, uncertain_below)
     versions = [m.version for m in (models.image if p_img else None, models.text if p_txt else None) if m]
     # Severity uses the AI category when it is sure, otherwise the citizen's own choice.
     basis = result["category"] if result["category"] and not result["uncertain"] else (chosen_category or result["category"] or "Other")
     severity, flags = rules.assess(basis, problem_type, text)
+    source = "+".join(s for s, p in (("image", p_img), ("text", p_txt)) if p) or "none"
     result.update(
         severity=severity, flags=flags,
+        # The photo sentence is only produced when an image model really ran.
         explanation=rules.explanation(basis, from_image=p_img is not None, flags=flags) if result["category"] else None,
         model_version="/".join(versions) or None,
-        source="+".join(s for s, p in (("image", p_img), ("text", p_txt)) if p) or "none",
+        source=source,
+        ai_available=result["category"] is not None,
+        models=status,
         inference_ms=round(models.image.last_ms, 1) if p_img and models.image else None,
+        nlp=rules.extract_nlp(text, severity, flags),
     )
-    if errors:
+    if status["image"] == "error" or status["text"] == "error":
         result["uncertain"] = True
     return result

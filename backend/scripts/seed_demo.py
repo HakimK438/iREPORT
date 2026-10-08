@@ -69,7 +69,7 @@ async def main() -> None:
         officer = ids["officer@bmc.demo"]
         for n, (problem, category, area, lat, lng, desc, address, days, status, confirms) in enumerate(DEMO_INCIDENTS):
             reporter = ids["aarav@example.com"] if area == "Andheri West" else neighbours[n]
-            r = await create_report(db, reporter, None, ReportIn(category=category, problem_type=problem, description=desc, lat=lat, lng=lng, address_text=address, area=area))
+            r = await create_report(db, reporter, ReportIn(location_source="manual", category=category, problem_type=problem, description=desc, lat=lat, lng=lng, address_text=address, area=area))
             created = datetime.now(UTC) - timedelta(days=days)
             await db.execute(text("UPDATE incidents SET created_at = :c WHERE id = :i"), {"c": created, "i": r["incident_id"]})
             await db.execute(text("UPDATE status_events SET created_at = :c WHERE incident_id = :i"), {"c": created, "i": r["incident_id"]})

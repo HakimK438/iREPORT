@@ -46,6 +46,26 @@ class RefData:
 
 ref = RefData()
 
+# Approximate centre of each seeded neighbourhood. Ward polygons are not loaded (see DECISIONS.md #1), so until
+# scripts/load_wards.py is run, an incident's area is the nearest centre to the INCIDENT coordinates.
+AREA_CENTRES: dict[str, tuple[float, float]] = {
+    "Andheri West": (19.1364, 72.8296), "Bandra": (19.0596, 72.8295), "Colaba": (18.9067, 72.8147), "Fort": (18.9345, 72.8352),
+    "Dadar": (19.0178, 72.8478), "Goregaon": (19.1663, 72.8526), "Malad": (19.1874, 72.8484), "Borivali": (19.2307, 72.8567),
+}
+MAX_AREA_KM = 12.0
+
+
+def nearest_area(lat: float, lng: float) -> str | None:
+    """Name of the closest seeded area centre within MAX_AREA_KM, else None (point is outside Mumbai)."""
+    import math
+
+    def km(c: tuple[float, float]) -> float:
+        dy, dx = (lat - c[0]) * 111.32, (lng - c[1]) * 111.32 * math.cos(math.radians(lat))
+        return math.hypot(dx, dy)
+
+    name, centre = min(AREA_CENTRES.items(), key=lambda kv: km(kv[1]))
+    return name if km(centre) <= MAX_AREA_KM else None
+
 
 async def load(db: AsyncSession) -> None:
     ref.wards = {w.id: w.name for w in (await db.scalars(select(Ward))).all()}

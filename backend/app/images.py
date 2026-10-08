@@ -5,6 +5,7 @@ metadata and re-encodes to WebP. The original upload is never stored."""
 import io
 from dataclasses import dataclass
 
+import numpy as np
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from .config import get_settings
@@ -42,6 +43,7 @@ class Processed:
     height: int
     gps: tuple[float, float] | None
     image: Image.Image  # decoded, oriented RGB copy for the classifier (kept in memory only)
+    quality: dict | None = None  # deterministic checks, see photo_quality()
 
 
 def _ratio(v) -> float:
@@ -80,6 +82,26 @@ def _webp(img: Image.Image, quality: int) -> bytes:
     return out.getvalue()
 
 
+# Heuristic thresholds (not learned): chosen so an ordinary phone photo reads "good".
+MIN_SIDE_PX, DARK_BELOW, BLURRY_BELOW = 480, 45.0, 60.0
+
+
+def photo_quality(img: Image.Image) -> dict:
+    """Cheap, deterministic photo checks with Pillow/NumPy only: resolution, brightness and blur
+    (variance of the Laplacian on a grey image of at most 512 px). Not machine learning."""
+    small = img.copy()
+    small.thumbnail((512, 512), Image.Resampling.BILINEAR)
+    g = np.asarray(small.convert("L"), dtype=np.float32)
+    brightness = float(g.mean())
+    sharpness = 0.0
+    if g.shape[0] >= 3 and g.shape[1] >= 3:
+        lap = g[:-2, 1:-1] + g[2:, 1:-1] + g[1:-1, :-2] + g[1:-1, 2:] - 4 * g[1:-1, 1:-1]
+        sharpness = float(lap.var())
+    low_res = min(img.width, img.height) < MIN_SIDE_PX
+    label = "dark" if brightness < DARK_BELOW else "blurry" if sharpness < BLURRY_BELOW else "low resolution" if low_res else "good"
+    return {"label": label, "width": img.width, "height": img.height, "brightness": round(brightness, 1), "sharpness": round(sharpness, 1)}
+
+
 def process(data: bytes) -> Processed:
     s = get_settings()
     if len(data) > s.max_upload_bytes:
@@ -107,6 +129,7 @@ def process(data: bytes) -> Processed:
     except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
         raise ApiError(415, "unreadable_image", "This photo could not be read. Please try another one.") from None
 
+    photo_q = photo_quality(img)
     main = img.copy()
     main.thumbnail((s.main_max_side, s.main_max_side), Image.Resampling.LANCZOS)
     main_bytes = b""
@@ -117,4 +140,4 @@ def process(data: bytes) -> Processed:
     thumb = main.copy()
     thumb.thumbnail((s.thumb_max_side, s.thumb_max_side), Image.Resampling.LANCZOS)
     thumb_bytes = _webp(thumb, 70)
-    return Processed(main_bytes, thumb_bytes, main.width, main.height, gps, main)
+    return Processed(main_bytes, thumb_bytes, main.width, main.height, gps, main, photo_q)

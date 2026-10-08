@@ -60,3 +60,30 @@ async def stats(_: Admin, db: Db):
           (SELECT count(*) FROM incidents) AS incidents,
           (SELECT count(*) FROM reports) AS reports"""))).mappings().one()
     return AdminStats(**row)
+
+
+# Recommendation only: nothing is assigned or stored (the schema has no assignment field).
+@router.get("/overview")
+async def overview(_: Admin, db: Db):
+    """Higher-authority view: unresolved critical count, per-department open workload, category concentration, top hotspots."""
+    from .. import incidents as svc
+
+    crit = await db.scalar(text("SELECT count(*) FROM incidents WHERE status <> 'Resolved' AND priority_score >= 65"))
+    depts = (await db.execute(text("""
+        SELECT d.name AS department, count(*) FILTER (WHERE i.status <> 'Resolved') AS open,
+               count(*) FILTER (WHERE i.status <> 'Resolved' AND i.priority_score >= 65) AS critical,
+               count(*) FILTER (WHERE i.status = 'Resolved') AS resolved
+        FROM departments d LEFT JOIN categories c ON c.department_id = d.id LEFT JOIN incidents i ON i.category_id = c.id
+        GROUP BY d.id, d.name ORDER BY open DESC, d.name"""))).all()
+    cats = (await db.execute(text("""
+        SELECT c.name AS category, d.name AS department, count(*) AS open
+        FROM incidents i JOIN categories c ON c.id = i.category_id LEFT JOIN departments d ON d.id = c.department_id
+        WHERE i.status <> 'Resolved' GROUP BY c.name, d.name ORDER BY open DESC"""))).all()
+    total_open = sum(c.open for c in cats) or 1
+    return {
+        "unresolved_critical": crit,
+        "departments": [{"department": d.department, "open": d.open, "critical": d.critical, "resolved": d.resolved} for d in depts],
+        "categories": [{"category": c.category, "open": c.open, "share_pct": round(100 * c.open / total_open), "recommended_department": c.department,
+                        "recommendation": f"{c.category} → {c.department}"} for c in cats],
+        "hotspots": await svc.hotspots(db, 5),
+    }

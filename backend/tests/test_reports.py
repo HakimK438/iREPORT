@@ -10,7 +10,7 @@ def offset(lat: float, lng: float, metres_north: float) -> tuple[float, float]:
 
 
 def report(lat=LINK_ROAD[0], lng=LINK_ROAD[1], category="Pothole", **extra) -> dict:
-    return {"category": category, "problem_type": "Large", "lat": lat, "lng": lng, "address_text": "Link Road", "area": "Andheri West", **extra}
+    return {"category": category, "problem_type": "Large", "lat": lat, "lng": lng, "address_text": "Link Road", "location_source": "manual", **extra}
 
 
 async def test_report_creates_incident_with_timeline(client):
@@ -144,13 +144,13 @@ async def test_authority_list_sort_filter_page_and_stats(client):
     officer = await make_authority(client)
     citizens = [await register_citizen(client) for _ in range(32)]
     # a safe problem confirmed by 30 people, and a dangerous one with 2 reports
-    safe = (await client.post("/reports", json=report(19.20, 72.85, category="Garbage", problem_type="Uncollected garbage", area="Malad"), headers=citizens[0]["headers"])).json()
+    safe = (await client.post("/reports", json=report(19.20, 72.85, category="Garbage", problem_type="Uncollected garbage"), headers=citizens[0]["headers"])).json()
     for c in citizens[1:30]:
         await client.post(f"/incidents/{safe['incident_id']}/confirm", headers=c["headers"])
-    danger = (await client.post("/reports", json=report(19.18, 72.84, category="Electrical Hazard", problem_type="Damaged", description="sparking wire near school", area="Malad"), headers=citizens[30]["headers"])).json()
+    danger = (await client.post("/reports", json=report(19.18, 72.84, category="Electrical Hazard", problem_type="Damaged", description="sparking wire near school"), headers=citizens[30]["headers"])).json()
     await client.post("/reports", json=report(*offset(19.18, 72.84, 10), category="Electrical Hazard", problem_type="Damaged"), headers=citizens[31]["headers"])
     for k in range(5):
-        await client.post("/reports", json=report(19.0 + k * 0.01, 72.8, category="Streetlight", problem_type="Not working", area="Colaba"), headers=citizens[k]["headers"])
+        await client.post("/reports", json=report(18.9067 + k * 0.002, 72.8147, category="Streetlight", problem_type="Not working"), headers=citizens[k]["headers"])
 
     page = (await client.get("/authority/incidents", headers=officer["headers"])).json()
     assert page["total"] == 7

@@ -34,7 +34,7 @@ async def test_analyze_photo_then_report_links_media(client):
 
     async with engine.connect() as conn:
         assert await conn.scalar(text("SELECT count(*) FROM media WHERE report_id IS NULL")) == 1
-    body = {"media_ids": a["media_ids"], "category": "Pothole", "problem_type": "Large", "lat": 19.1, "lng": 72.8, "address_text": "Link Road",
+    body = {"media_ids": a["media_ids"], "category": "Pothole", "problem_type": "Large", "lat": 19.1, "lng": 72.8, "location_source": "photo", "address_text": "Link Road",
             "ai": {"category": a["category"], "confidence": a["confidence"], "model_version": a["model_version"]}}
     created = (await client.post("/reports", json=body, headers=c["headers"])).json()
     async with engine.connect() as conn:
@@ -114,7 +114,7 @@ async def test_cleanup_jobs_and_priority_refresh(client):
     c = await register_citizen(client)
     a = (await client.post("/ai/analyze", files=files(photo((230, 20, 20)), photo((20, 230, 20))), headers=c["headers"])).json()
     assert len(get_storage().objects) == 4
-    keep = (await client.post("/reports", json={"media_ids": a["media_ids"][:1], "category": "Pothole", "lat": 19.1, "lng": 72.8}, headers=c["headers"])).json()
+    keep = (await client.post("/reports", json={"media_ids": a["media_ids"][:1], "category": "Pothole", "lat": 19.1, "lng": 72.8, "location_source": "gps"}, headers=c["headers"])).json()
     async with engine.begin() as conn:
         await conn.execute(text("UPDATE media SET created_at = now() - interval '2 hours'"))
     assert await jobs.cleanup_drafts() == 1

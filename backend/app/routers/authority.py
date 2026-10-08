@@ -9,7 +9,7 @@ from .. import paging
 from ..deps import Authority, Db
 from ..errors import ApiError, not_found
 from ..models import STATUSES
-from ..priority import level_of, priority_of
+from ..priority import level_of
 from ..refdata import ref
 from ..schemas import AuthorityUpdate, BulkUpdate
 from ..storage import get_storage
@@ -90,7 +90,7 @@ async def list_incidents(
     order = ", ".join(f"{c} {direction}" for c, _ in cols)
     rows = (await db.execute(text(f"""
         WITH page AS (SELECT i.* FROM incidents i {where_sql} ORDER BY {order} LIMIT :n)
-        {svc.ROW_SELECT.format(extra='')}
+        {svc.ROW_SELECT.format(extra=", ST_Y(i.location::geometry) AS lat, ST_X(i.location::geometry) AS lng")}
         ORDER BY {order}"""), {**params, "n": limit + 1})).all()
     more = len(rows) > limit
     rows = rows[:limit]
@@ -130,19 +130,24 @@ async def stats(_: Authority, db: Db):
     }
 
 
+@router.get("/hotspots")
+async def hotspots(_: Authority, db: Db, limit: int = Query(5, ge=1, le=20)):
+    """Areas ranked by open-incident impact (see incidents.hotspots for the formula)."""
+    return {"items": await svc.hotspots(db, limit)}
+
+
 @router.get("/incidents/{incident_id}")
 async def incident_detail(incident_id: uuid.UUID, authority: Authority, db: Db, include_phone: bool = False):
     """Full detail for an approved authority: priority reasons (computed on read), reporters' names,
     the message thread and signed photo URLs. Phone numbers only when explicitly requested."""
     row = (await db.execute(text(f"""
         WITH page AS (SELECT * FROM incidents WHERE id = :id)
-        {svc.ROW_SELECT.format(extra=", ST_Y(i.location::geometry) AS lat, ST_X(i.location::geometry) AS lng, c.hazard_points")}"""), {"id": incident_id})).first()
+        {svc.ROW_SELECT.format(extra=", ST_Y(i.location::geometry) AS lat, ST_X(i.location::geometry) AS lng")}"""), {"id": incident_id})).first()
     if not row:
         raise not_found("Incident")
-    p = priority_of(row.severity, row.category, row.hazard_points, list(row.flags), row.status, row.created_at, row.affected_count)
     reporters = (await db.execute(text("""
         SELECT r.id, u.name, u.phone, r.problem_type, r.description, r.created_at, r.user_corrected,
-               ac.name AS ai_category, r.ai_confidence
+               ac.name AS ai_category, r.ai_confidence, r.ai_source, r.ai_disagreement, r.nlp, r.citizen_message, r.location_source
         FROM reports r JOIN users u ON u.id = r.user_id LEFT JOIN categories ac ON ac.id = r.ai_category_id
         WHERE r.incident_id = :id ORDER BY r.created_at"""), {"id": incident_id})).all()
     media = (await db.execute(text("""
@@ -151,12 +156,12 @@ async def incident_detail(incident_id: uuid.UUID, authority: Authority, db: Db, 
     storage = get_storage()
     d = svc.authority_row(row)
     d.update(
-        lat=row.lat, lng=row.lng, priority_score=row.priority_score, level=level_of(row.priority_score),
-        reasons=p.reasons,
         reporters=[{
             "name": r.name, "phone": r.phone if include_phone else None, "problem_type": r.problem_type,
             "description": r.description, "reported_at": r.created_at,
             "ai_category": r.ai_category, "ai_confidence": r.ai_confidence, "user_corrected": r.user_corrected,
+            "ai_source": r.ai_source, "ai_disagreement": r.ai_disagreement, "nlp": r.nlp, "citizen_message": r.citizen_message,
+            "location_source": r.location_source,
         } for r in reporters],
         images=[{"url": storage.signed_url(m.storage_key), "thumb_url": storage.signed_url(m.thumb_key), "width": m.width, "height": m.height} for m in media],
         history=(await svc.history(db, [incident_id]))[incident_id],

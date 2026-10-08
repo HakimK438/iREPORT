@@ -41,9 +41,15 @@ async def analyze(
     if len(photos) > s.max_photos:
         raise ApiError(422, "too_many_photos", f"Add up to {s.max_photos} photos.")
     started = time.perf_counter()
-    processed = []
-    for upload in photos:
-        processed.append(await run_in_threadpool(images.process, await _read_limited(upload, s.max_upload_bytes)))
+    processed, photo_errors, first_error = [], [], None
+    for n, upload in enumerate(photos):
+        try:
+            processed.append(await run_in_threadpool(images.process, await _read_limited(upload, s.max_upload_bytes)))
+        except ApiError as exc:  # one bad photo must not discard the others
+            photo_errors.append({"index": n, "code": exc.code, "message": exc.message})
+            first_error = first_error or exc
+    if first_error and not processed and not (text and text.strip()):
+        raise first_error  # nothing usable at all: tell the citizen why
 
     storage = get_storage()
     media_ids, thumbs = [], []
@@ -63,10 +69,12 @@ async def analyze(
     except Exception:  # noqa: BLE001 - the AI must never fail the request
         log.exception("analyze failed")
         result = pipeline.combine(None, None, s.ai_uncertain_below)
-        result.update(severity=None, flags=[], explanation=None, model_version=None, source="none", inference_ms=None)
+        result.update(severity=None, flags=[], explanation=None, model_version=None, source="none", inference_ms=None,
+                      ai_available=False, models={"image": "error", "text": "error"}, nlp=None)
     gps = next((p.gps for p in processed if p.gps), None)
     result.update(
-        media_ids=media_ids, thumb_urls=thumbs, lang=lang,
+        media_ids=media_ids, thumb_urls=thumbs, lang=lang, photo_errors=photo_errors,
+        photo_quality=[p.quality for p in processed],
         gps_suggestion={"lat": gps[0], "lng": gps[1]} if gps else None,
         total_ms=round((time.perf_counter() - started) * 1000, 1),
     )

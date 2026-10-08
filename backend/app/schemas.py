@@ -123,6 +123,8 @@ class AiIn(Strict):
     category: str | None = Field(default=None, max_length=40)
     confidence: float | None = Field(default=None, ge=0, le=1)
     model_version: str | None = Field(default=None, max_length=40)
+    source: Literal["image", "text", "image+text"] | None = None
+    disagreement: dict[str, str] | None = None
 
 
 class ReportIn(Strict):
@@ -133,11 +135,15 @@ class ReportIn(Strict):
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
     address_text: str | None = Field(default=None, max_length=200)
+    # Where lat/lng came from. Required: a report must carry a genuine incident location, never the profile area.
+    location_source: Literal["photo", "gps", "manual"]
+    # Optional area chosen/shown in the flow for the incident point (used only while ward polygons are not loaded).
     area: str | None = Field(default=None, max_length=60)
     flags: list[str] = Field(default_factory=list, max_length=8)
+    citizen_message: str | None = Field(default=None, max_length=500)
     ai: AiIn | None = None
 
-    @field_validator("problem_type", "address_text")
+    @field_validator("problem_type", "address_text", "citizen_message")
     @classmethod
     def clean_text(cls, v: str | None) -> str | None:
         return _clean(v)
@@ -156,6 +162,8 @@ class ReportCreated(BaseModel):
     affected_count: int
     severity: str
     status: str
+    area: str | None = None
+    department: str | None = None
 
 
 class MessageIn(Strict):

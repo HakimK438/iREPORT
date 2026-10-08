@@ -12,7 +12,7 @@ router = APIRouter(tags=["reports"])
 
 @router.post("/reports", status_code=201, response_model=ReportCreated)
 async def create_report(body: ReportIn, citizen: Citizen, db: Db):
-    result = await svc.create_report(db, citizen.id, citizen.user.ward_id, body)
+    result = await svc.create_report(db, citizen.id, body)
     await db.commit()
     return result
 
@@ -30,8 +30,10 @@ async def my_reports(citizen: Citizen, db: Db, cursor: str | None = None, limit:
     rows = (await db.execute(text(f"""
         SELECT r.id AS report_id, r.created_at AS reported_at, r.problem_type AS my_problem, i.id, i.public_id, c.name AS category,
                w.name AS area, i.address_text, i.severity::text AS severity, i.status::text AS status, i.affected_count,
-               i.created_at, i.updated_at, m.storage_key, m.thumb_key
+               i.created_at, i.updated_at, m.storage_key, m.thumb_key, d.name AS department, r.citizen_message, r.location_source,
+               r.ai_confidence, r.ai_source, ac.name AS ai_category, r.user_corrected
         FROM reports r JOIN incidents i ON i.id = r.incident_id JOIN categories c ON c.id = i.category_id
+        LEFT JOIN departments d ON d.id = c.department_id LEFT JOIN categories ac ON ac.id = r.ai_category_id
         LEFT JOIN wards w ON w.id = i.ward_id
         LEFT JOIN LATERAL (SELECT storage_key, thumb_key FROM media WHERE report_id = r.id ORDER BY created_at LIMIT 1) m ON true
         WHERE r.user_id = :u {keyset}
@@ -50,6 +52,8 @@ async def my_reports(citizen: Citizen, db: Db, cursor: str | None = None, limit:
         "image_url": storage.signed_url(r.storage_key) if r.storage_key else None,
         "thumb_url": storage.signed_url(r.thumb_key) if r.thumb_key else None,
         "history": hist[r.id], "messages": msgs[r.id],
+        "department": r.department, "citizen_message": r.citizen_message, "location_source": r.location_source,
+        "ai": {"category": r.ai_category, "confidence": r.ai_confidence, "source": r.ai_source, "user_corrected": r.user_corrected},
     } for r in rows]
     if not cursor:
         await db.execute(text("UPDATE users SET messages_seen_at = now() WHERE id = :u"), {"u": citizen.id})

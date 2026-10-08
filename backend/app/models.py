@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import ARRAY, BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, SmallInteger, String, Text, func
-from sqlalchemy.dialects.postgresql import CITEXT, ENUM, UUID
+from sqlalchemy.dialects.postgresql import CITEXT, ENUM, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import UserDefinedType
 
@@ -122,6 +122,11 @@ class Report(Base):
     model_version: Mapped[str | None] = mapped_column(Text)
     user_corrected: Mapped[bool] = mapped_column(Boolean, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    location_source: Mapped[str | None] = mapped_column(Text)
+    citizen_message: Mapped[str | None] = mapped_column(Text)
+    ai_source: Mapped[str | None] = mapped_column(Text)
+    ai_disagreement: Mapped[dict | None] = mapped_column(JSONB)
+    nlp: Mapped[dict | None] = mapped_column(JSONB)
 
 
 class Media(Base):

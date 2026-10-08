@@ -1,5 +1,6 @@
 """Incident and report logic shared by the citizen and authority routes."""
 
+import json
 import uuid
 
 from sqlalchemy import text
@@ -8,21 +9,25 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .ai import rules
 from .config import get_settings
 from .errors import ApiError
-from .priority import level_of
-from .refdata import CategoryRef, ref
+from .priority import level_of, priority_of
+from .refdata import CategoryRef, nearest_area, ref
 from .schemas import ReportIn
 from .storage import get_storage
 
 # Public columns of an incident plus its title parts and first photo. Used with a pre-filtered
 # "page" CTE so the lateral lookups only run for the rows actually returned.
 ROW_SELECT = """
-SELECT i.id, i.public_id, c.name AS category, w.name AS area, i.address_text, i.severity::text AS severity,
+SELECT i.id, i.public_id, c.name AS category, c.hazard_points, d.name AS department, w.name AS area, i.address_text, i.severity::text AS severity,
        i.status::text AS status, i.flags, i.affected_count, i.priority_score, i.created_at, i.updated_at,
-       fr.problem_type, fm.thumb_key, fm.storage_key {extra}
+       fr.problem_type, fr.ai_category, fr.ai_confidence, fr.ai_source, fr.ai_disagreement, fr.nlp, fr.citizen_message, fr.user_corrected, fr.location_source,
+       fm.thumb_key, fm.storage_key {extra}
 FROM page i
 JOIN categories c ON c.id = i.category_id
+LEFT JOIN departments d ON d.id = c.department_id
 LEFT JOIN wards w ON w.id = i.ward_id
-LEFT JOIN LATERAL (SELECT r.problem_type FROM reports r WHERE r.incident_id = i.id ORDER BY r.created_at LIMIT 1) fr ON true
+LEFT JOIN LATERAL (SELECT r.problem_type, ac.name AS ai_category, r.ai_confidence, r.ai_source, r.ai_disagreement, r.nlp, r.citizen_message, r.user_corrected, r.location_source
+                   FROM reports r LEFT JOIN categories ac ON ac.id = r.ai_category_id
+                   WHERE r.incident_id = i.id ORDER BY r.created_at LIMIT 1) fr ON true
 LEFT JOIN LATERAL (SELECT m.thumb_key, m.storage_key FROM reports r JOIN media m ON m.report_id = r.id
                    WHERE r.incident_id = i.id ORDER BY r.created_at, m.created_at LIMIT 1) fm ON true
 """
@@ -49,10 +54,61 @@ def public_row(row) -> dict:
     }
 
 
+def ai_summary(row) -> dict:
+    """What the AI said about the first report of this incident, and whether the citizen changed the category."""
+    disagreement = row.ai_disagreement
+    agreement = "disagree" if disagreement else ("agree" if row.ai_source == "image+text" else None)
+    return {
+        "category": row.ai_category, "confidence": row.ai_confidence, "source": row.ai_source,
+        "agreement": agreement, "disagreement": disagreement, "user_corrected": row.user_corrected,
+    }
+
+
 def authority_row(row) -> dict:
+    """Decision-support fields for the control room. Each field says where it came from:
+    ai = ML models, nlp/reasons = fixed rules, area/lat/lng = PostGIS, department = reference table, citizen_message = user text."""
     d = public_row(row)
-    d.update(priority_score=row.priority_score, level=level_of(row.priority_score))
+    p = priority_of(row.severity, row.category, row.hazard_points, list(row.flags), row.status, row.created_at, row.affected_count)
+    d.update(
+        priority_score=row.priority_score, level=level_of(row.priority_score), reasons=p.reasons,
+        department=row.department, lat=getattr(row, "lat", None), lng=getattr(row, "lng", None),
+        location_source=row.location_source, ai=ai_summary(row), nlp=row.nlp, citizen_message=row.citizen_message,
+    )
     return d
+
+
+HOTSPOT_SQL = """
+WITH o AS (SELECT * FROM incidents WHERE status <> 'Resolved' AND ward_id IS NOT NULL)
+SELECT w.name AS area, count(*) AS open_incidents, sum(o.priority_score)::int AS priority_sum, sum(o.affected_count)::int AS affected,
+       count(*) FILTER (WHERE o.priority_score >= 65) AS critical,
+       avg(ST_Y(o.location::geometry)) AS lat, avg(ST_X(o.location::geometry)) AS lng,
+       (SELECT count(DISTINCT r.user_id) FROM reports r JOIN o o2 ON o2.id = r.incident_id WHERE o2.ward_id = o.ward_id) AS citizens,
+       (SELECT count(*) FROM confirmations f JOIN o o3 ON o3.id = f.incident_id WHERE o3.ward_id = o.ward_id) AS confirmations,
+       (SELECT json_agg(json_build_object('category', cn, 'count', cnt) ORDER BY cnt DESC, cn) FROM
+           (SELECT c.name AS cn, count(*) AS cnt FROM o o4 JOIN categories c ON c.id = o4.category_id WHERE o4.ward_id = o.ward_id GROUP BY c.name) q) AS categories
+FROM o JOIN wards w ON w.id = o.ward_id
+GROUP BY o.ward_id, w.name
+ORDER BY priority_sum DESC, open_incidents DESC
+LIMIT :n
+"""
+
+
+async def hotspots(db: AsyncSession, limit: int = 5) -> list[dict]:
+    """Open incidents grouped by area (the area is derived from each incident's PostGIS point).
+    impact_score = 100 * (area's summed incident priority scores) / (largest area's sum), so the top
+    hotspot is 100 and the rest are relative to it. Individual incidents are not merged."""
+    rows = (await db.execute(text(HOTSPOT_SQL), {"n": limit})).all()
+    top = max((r.priority_sum for r in rows), default=0) or 1
+    out = []
+    for r in rows:
+        cats = r.categories or []
+        out.append({
+            "area": r.area, "open_incidents": r.open_incidents, "critical": r.critical, "affected": r.affected,
+            "unique_citizens": r.citizens, "confirmations": r.confirmations, "priority_sum": r.priority_sum,
+            "impact_score": round(100 * r.priority_sum / top), "categories": cats, "main_problems": [c["category"] for c in cats[:2]],
+            "lat": r.lat, "lng": r.lng,
+        })
+    return out
 
 
 async def recompute_priority(db: AsyncSession, ids: list[uuid.UUID] | None = None) -> int:
@@ -67,12 +123,14 @@ async def recompute_priority(db: AsyncSession, ids: list[uuid.UUID] | None = Non
     return result.rowcount
 
 
-async def resolve_ward(db: AsyncSession, lat: float, lng: float, fallback: int | None) -> int | None:
+async def resolve_ward(db: AsyncSession, lat: float, lng: float) -> int | None:
+    """Ward of the INCIDENT point: PostGIS polygon first, else the nearest seeded area centre.
+    The citizen's profile area is never used."""
     ward = await db.scalar(text("SELECT id FROM wards WHERE geom IS NOT NULL AND ST_Covers(geom, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography) LIMIT 1"), {"lat": lat, "lng": lng})
-    return ward or fallback
+    return ward or ref.ward_id(nearest_area(lat, lng))
 
 
-async def create_report(db: AsyncSession, user_id: uuid.UUID, user_ward: int | None, body: ReportIn) -> dict:
+async def create_report(db: AsyncSession, user_id: uuid.UUID, body: ReportIn) -> dict:
     """Saves one citizen report. Attaches it to an open incident of the same category within the merge
     radius and age (section 4), otherwise creates a new incident. Runs in the caller's transaction."""
     s = get_settings()
@@ -120,7 +178,7 @@ async def create_report(db: AsyncSession, user_id: uuid.UUID, user_ward: int | N
         })).first()
     else:
         merged = False
-        ward_id = await resolve_ward(db, body.lat, body.lng, ref.ward_id(body.area) or user_ward)
+        ward_id = await resolve_ward(db, body.lat, body.lng)
         row = (await db.execute(text("""
             INSERT INTO incidents (public_id, category_id, location, ward_id, address_text, severity, flags)
             VALUES ('IR-' || to_char(now() AT TIME ZONE 'Asia/Kolkata', 'YYYYMMDD') || '-' || lpad(nextval('incident_public_seq')::text, 5, '0'),
@@ -131,18 +189,26 @@ async def create_report(db: AsyncSession, user_id: uuid.UUID, user_ward: int | N
         incident_id, public_id = row.id, row.public_id
         await db.execute(text("INSERT INTO status_events (incident_id, from_status, to_status, actor_id) VALUES (:i, NULL, 'Reported', :u)"), {"i": incident_id, "u": user_id})
 
+    nlp = rules.extract_nlp(body.description, severity, flags)  # computed here, never trusted from the client
+    ai = body.ai
     report_id = await db.scalar(text("""
-        INSERT INTO reports (incident_id, user_id, problem_type, description, ai_category_id, ai_confidence, model_version, user_corrected)
-        VALUES (:i, :u, :p, :d, :ai, :conf, :mv, :corrected) RETURNING id"""), {
+        INSERT INTO reports (incident_id, user_id, problem_type, description, ai_category_id, ai_confidence, model_version, user_corrected,
+                             location_source, citizen_message, ai_source, ai_disagreement, nlp)
+        VALUES (:i, :u, :p, :d, :ai, :conf, :mv, :corrected, :src, :msg, :ais, CAST(:dis AS jsonb), CAST(:nlp AS jsonb)) RETURNING id"""), {
         "i": incident_id, "u": user_id, "p": body.problem_type, "d": body.description or None,
-        "ai": ai_cat.id if ai_cat else None, "conf": body.ai.confidence if body.ai else None,
-        "mv": body.ai.model_version if body.ai else None, "corrected": bool(ai_cat and ai_cat.id != category.id),
+        "ai": ai_cat.id if ai_cat else None, "conf": ai.confidence if ai else None,
+        "mv": ai.model_version if ai else None, "corrected": bool(ai_cat and ai_cat.id != category.id),
+        "src": body.location_source, "msg": body.citizen_message,
+        "ais": ai.source if ai else None, "dis": json.dumps(ai.disagreement) if ai and ai.disagreement else None,
+        "nlp": json.dumps(nlp) if nlp else None,
     })
     if media_ids:
         await db.execute(text("UPDATE media SET report_id = :r WHERE id = ANY(CAST(:ids AS uuid[])) AND uploader_id = :u AND report_id IS NULL"), {"r": report_id, "ids": [str(m) for m in media_ids], "u": user_id})
     await recompute_priority(db, [incident_id])
+    place = (await db.execute(text("SELECT w.name AS area FROM incidents i LEFT JOIN wards w ON w.id = i.ward_id WHERE i.id = :i"), {"i": incident_id})).first()
     return {"report_id": report_id, "incident_id": incident_id, "incident_public_id": public_id, "merged": merged,
-            "affected_count": row.affected_count, "severity": row.severity, "status": row.status}
+            "affected_count": row.affected_count, "severity": row.severity, "status": row.status,
+            "area": place.area if place else None, "department": ref.departments.get(category.department_id)}
 
 
 async def history(db: AsyncSession, incident_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[dict]]:
