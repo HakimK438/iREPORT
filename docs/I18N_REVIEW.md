@@ -12,3 +12,5 @@ Newest drafts (this change), in `src/i18n.ts`:
 Not yet translated (English only): Auth page, Profile details, FAQ, reply box, authority and admin screens (officers, by decision).
 
 Check: `node scripts/check-i18n.mjs` (empty strings and key parity only; it cannot judge translation quality).
+
+Also drafted in this round: profile menu (`pf_*`), contribution labels (`resolvedCount`, `confirmsReceived`, `levelContributor`, `levelTrusted`), `pfEyebrow`, `pfIntro`, `photoNotAnalysed`, and the reworded `noImageModel`.

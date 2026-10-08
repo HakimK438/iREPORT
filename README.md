@@ -45,7 +45,7 @@ cd backend && python -m venv .venv && .venv/Scripts/pip install -r requirements-
 ml/.venv/Scripts/python -m pytest ml/tests                     # text runtime == scikit-learn
 ```
 
-There are 84 backend tests and 2 ML tests, all passing. They cover:
+There are 85 backend tests and 2 ML tests, all passing. They cover:
 - auth: refresh rotation and reuse detection, rate limits, role checks, authority approval and revocation
 - the merge rule (50 m, same category, open, under 14 days), with no double counting
 - keyset paging returning every row exactly once

@@ -301,6 +301,7 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
           {aiBusy && <p className="muted-line">{tr(lang, "analysing")} {shots.length > 0 && ai.phase === "loading" && ai.progress < 1 ? `${Math.round(ai.progress * 100)}%` : ""}</p>}
           {ai.phase === "failed" && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {tr(lang, "aiUnavailable")}. {shots.length > 0 && "Your photos were not uploaded. Retry, or continue without them."} <button className="text-button" onClick={() => void runAnalysis(true)}>{tr(lang, "retry")}</button></div>}
           {result && !result.ai_available && <p className="muted-line">{shots.length > 0 && result.media_ids.length > 0 ? tr(lang, "noImageModel") : tr(lang, "aiUnavailable")}</p>}
+          {result && result.ai_available && !result.image_model_active && shots.length > 0 && <p className="muted-line">{tr(lang, "photoNotAnalysed")}</p>}
           {result && result.ai_available && <dl className="rv-list">
             <div><dt>{tr(lang, "detected")} <Tag kind="ml" lang={lang} /></dt><dd><b>{result.category ? catName(lang, result.category) : "—"}</b></dd></div>
             <div><dt>{tr(lang, "confidence")}</dt><dd>{pct !== null ? (result.image_confidence != null && result.text_confidence != null

@@ -87,7 +87,8 @@ export const STR = {
   q_blurry: T("blurry", "धुंधली", "धूसर"),
   q_dark: T("dark", "अंधेरी", "अंधारी"),
   q_low: T("low resolution", "कम रिज़ॉल्यूशन", "कमी रिझोल्यूशन"),
-  noImageModel: T("Photo stored. Category chosen from your description / by you.", "फ़ोटो सुरक्षित है। श्रेणी आपके विवरण से / आपके द्वारा चुनी गई।", "फोटो जतन केला. श्रेणी तुमच्या वर्णनावरून / तुम्ही निवडलेली."),
+  noImageModel: T("Automatic analysis isn't active for this report. Your photo is attached as evidence. Please choose the category.", "इस रिपोर्ट के लिए स्वचालित विश्लेषण सक्रिय नहीं है। आपकी फ़ोटो प्रमाण के रूप में जुड़ी है। कृपया श्रेणी चुनें।", "या अहवालासाठी स्वयंचलित विश्लेषण सक्रिय नाही. तुमचा फोटो पुरावा म्हणून जोडला आहे. कृपया श्रेणी निवडा."),
+  photoNotAnalysed: T("Your photo was not analysed; the category comes from your description or your choice.", "आपकी फ़ोटो का विश्लेषण नहीं हुआ; श्रेणी आपके विवरण या आपकी पसंद से है।", "तुमच्या फोटोचे विश्लेषण झाले नाही; श्रेणी तुमच्या वर्णनावरून किंवा तुमच्या निवडीवरून आहे."),
   aiUnavailable: T("AI unavailable — choose the category", "AI उपलब्ध नहीं — श्रेणी चुनें", "AI उपलब्ध नाही — श्रेणी निवडा"),
   aiHigh: T("AI evidence: high confidence (photo and description agree)", "AI प्रमाण: उच्च विश्वास (फ़ोटो और विवरण मेल खाते हैं)", "AI पुरावा: उच्च विश्वास (फोटो आणि वर्णन जुळतात)"),
   aiVerify: T("AI classification needs verification", "AI वर्गीकरण की पुष्टि ज़रूरी है", "AI वर्गीकरणाची पडताळणी आवश्यक"),
@@ -128,8 +129,6 @@ export const STR = {
   homeArea: T("Home area (used for Community only, never as a report location)", "घर का क्षेत्र (केवल कम्युनिटी के लिए, रिपोर्ट स्थान के रूप में कभी नहीं)", "घराचे क्षेत्र (फक्त कम्युनिटीसाठी, अहवाल ठिकाण म्हणून कधीही नाही)"),
   contribution: T("Your contribution", "आपका योगदान", "तुमचे योगदान"),
   submitted: T("Reports submitted", "जमा की गई रिपोर्ट", "सादर केलेले अहवाल"),
-  verified: T("Verified (resolved or backed by others)", "सत्यापित (हल हुई या दूसरों द्वारा समर्थित)", "पडताळलेले (सोडवलेले किंवा इतरांनी समर्थन दिलेले)"),
-  confirmsGiven: T("Community confirmations given", "दी गई कम्युनिटी पुष्टियाँ", "दिलेल्या कम्युनिटी पुष्टी"),
   myLatest: T("My latest reports", "मेरी ताज़ा रिपोर्ट", "माझे अलीकडील अहवाल"),
   noReports: T("No reports yet.", "अभी कोई रिपोर्ट नहीं।", "अजून अहवाल नाहीत."),
   email: T("Email", "ईमेल", "ईमेल"),
@@ -170,6 +169,27 @@ export const STR = {
   cmChangeFilters: T("Change filters or select another area to see more.", "और देखने के लिए फ़िल्टर बदलें या दूसरा क्षेत्र चुनें।", "अधिक पाहण्यासाठी फिल्टर बदला किंवा दुसरे क्षेत्र निवडा."),
   cmLocating: T("Finding you…", "आपका स्थान खोजा जा रहा है…", "तुमचे स्थान शोधत आहे…"),
   cmNoLocation: T("Location is not available on this device.", "इस डिवाइस पर स्थान उपलब्ध नहीं है।", "या डिव्हाइसवर स्थान उपलब्ध नाही."),
+  resolvedCount: T("Reports resolved", "हल हुई रिपोर्ट", "निराकरण झालेले अहवाल"),
+  confirmsReceived: T("Confirmations from neighbours", "पड़ोसियों से पुष्टियाँ", "शेजाऱ्यांकडून पुष्टी"),
+  levelContributor: T("Contributor", "योगदानकर्ता", "योगदानकर्ता"),
+  levelTrusted: T("Trusted contributor", "विश्वसनीय योगदानकर्ता", "विश्वासार्ह योगदानकर्ता"),
+  // profile menu (display only; the app keys on the English titles)
+  pf_My_Reports: T("My Reports", "मेरी रिपोर्ट", "माझे अहवाल"),
+  pf_View_your_submissions: T("View your submissions", "अपनी जमा की गई रिपोर्ट देखें", "तुम्ही सादर केलेले अहवाल पहा"),
+  pf_Log_out: T("Log out", "लॉग आउट", "लॉग आउट"),
+  pf_Log_in___Register: T("Log in / Register", "लॉग इन / रजिस्टर", "लॉग इन / नोंदणी"),
+  pf_Citizen__authority_or_admin: T("Citizen, authority or admin", "नागरिक, प्राधिकरण या एडमिन", "नागरिक, प्राधिकरण किंवा अ‍ॅडमिन"),
+  pf_Saved___Followed_Issues: T("Saved / Followed Issues", "सहेजी / फ़ॉलो की गई समस्याएँ", "जतन केलेल्या / फॉलो केलेल्या समस्या"),
+  pf_Coming_soon: T("Coming soon", "जल्द आ रहा है", "लवकरच येत आहे"),
+  pf_Notifications: T("Notifications", "सूचनाएँ", "सूचना"),
+  pf_No_new_messages: T("No new messages", "कोई नया संदेश नहीं", "नवीन संदेश नाहीत"),
+  pf_Language: T("Language", "भाषा", "भाषा"),
+  pf_Privacy___Account: T("Privacy & Account", "गोपनीयता और खाता", "गोपनीयता आणि खाते"),
+  pf_Manage_your_data: T("Manage your data", "अपना डेटा प्रबंधित करें", "तुमचा डेटा व्यवस्थापित करा"),
+  pf_Help___FAQ: T("Help & FAQ", "सहायता और FAQ", "मदत आणि FAQ"),
+  pf_Get_clear_answers: T("Get clear answers", "स्पष्ट उत्तर पाएँ", "स्पष्ट उत्तरे मिळवा"),
+  pfEyebrow: T("PROFILE", "प्रोफ़ाइल", "प्रोफाइल"),
+  pfIntro: T("Preferences, support and practical civic tools.", "पसंद, सहायता और व्यावहारिक नागरिक उपकरण।", "आवडीनिवडी, मदत आणि उपयुक्त नागरी साधने."),
 } satisfies Record<string, Row>;
 
 export type StrKey = keyof typeof STR;
@@ -183,3 +203,9 @@ export const severityName = (lang: Lang, s: string): string => { const k = `sev_
 /** Question/option label table entry: a plain string for English-only values or a per-language row. */
 export type Label = Row;
 export const L = T;
+
+/** Profile menu text: looks the English title up in the table, otherwise shows it unchanged (emails, counts). */
+export const menuText = (lang: Lang, english: string): string => {
+  const k = `pf_${english.replace(/[^A-Za-z]/g, "_")}`;
+  return k in STR ? tr(lang, k as StrKey) : english;
+};

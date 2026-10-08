@@ -79,6 +79,7 @@ export interface MapIncident { id: string; public_id: string; title: string; cat
 export interface MapCluster { id: number; size: number; lat: number; lng: number; radius_m: number; critical: number; priority_sum: number; categories: { category: string; count: number }[]; areas: string[]; incident_ids: string[]; name: string }
 export interface MapArea { area: string; total: number; open: number; critical: number; resolved: number; categories: { category: string; count: number }[]; lat: number; lng: number }
 export interface MapData { incidents: MapIncident[]; clusters: MapCluster[]; areas: MapArea[]; truncated: boolean; method: { name: string; engine: string; eps_m: number; min_points: number; scope: string } }
+export interface Summary { reports_submitted: number; incidents_resolved: number; confirmations_received: number; level: "contributor" | "trusted" | null }
 export interface Contribution { reports_submitted: number; reports_verified: number; confirmations_given: number; category_corrected: number; label: string | null }
 export interface GeoResolve { area: string | null; method: "polygon" | "nearest_area_centre"; departments: Record<string, string | null> }
 export interface AuthorityDetail extends AuthorityRow { reporters: { name: string; phone: string | null; problem_type: string | null; description: string | null; reported_at: string; ai_category: string | null; ai_confidence: number | null; user_corrected: boolean; ai_source: string | null; ai_disagreement: { image: string; text: string } | null; nlp: Nlp | null; citizen_message: string | null; location_source: string | null }[]; images: { url: string; thumb_url: string }[]; history: HistoryEvent[]; messages: Msg[] }
@@ -111,6 +112,7 @@ export const api = {
   me: () => request<ApiUser>("/me"),
   patchMe: (body: Partial<Pick<ApiUser, "name" | "phone" | "area" | "lang">>) => request<ApiUser>("/me", { method: "PATCH", body }),
   contribution: () => request<Contribution>("/me/contribution"),
+  summary: () => request<Summary>("/me/summary"),
   resolveGeo: (lat: number, lng: number) => request<GeoResolve>(`/geo/resolve${qs({ lat, lng })}`),
   exportMe: () => request<unknown>("/me/export"),
   deleteMe: () => request<void>("/me", { method: "DELETE" }),

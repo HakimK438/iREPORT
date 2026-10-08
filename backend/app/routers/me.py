@@ -103,3 +103,18 @@ async def contribution(principal: CurrentUser, db: Db):
         "reports_submitted": row.submitted, "reports_verified": row.verified, "confirmations_given": row.confirmations_given,
         "category_corrected": row.corrected, "label": "Trusted contributor" if trusted else None,
     }
+
+
+@router.get("/me/summary")
+async def summary(principal: CurrentUser, db: Db):
+    """Three real numbers and a level. incidents_resolved = my reports whose incident is Resolved;
+    confirmations_received = sum of (affected_count - 1) over incidents I started (my report is the earliest).
+    Level: Contributor >= 1 resolved; Trusted contributor >= 5 resolved and >= 10 submitted. Never from volume alone."""
+    row = (await db.execute(text("""
+        SELECT
+          (SELECT count(*) FROM reports WHERE user_id = :u)::int AS submitted,
+          (SELECT count(*) FROM reports r JOIN incidents i ON i.id = r.incident_id WHERE r.user_id = :u AND i.status = 'Resolved')::int AS resolved,
+          (SELECT COALESCE(sum(i.affected_count - 1), 0) FROM incidents i WHERE i.affected_count > 1 AND
+              (SELECT r.user_id FROM reports r WHERE r.incident_id = i.id ORDER BY r.created_at, r.id LIMIT 1) = :u)::int AS received"""), {"u": principal.id})).one()
+    level = "trusted" if row.resolved >= 5 and row.submitted >= 10 else "contributor" if row.resolved >= 1 else None
+    return {"reports_submitted": row.submitted, "incidents_resolved": row.resolved, "confirmations_received": row.received, "level": level}

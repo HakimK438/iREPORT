@@ -352,3 +352,20 @@ async def _answers_of(report_id):
 
     async with SessionLocal() as db:
         return await db.scalar(text("SELECT answers FROM reports WHERE id = :i"), {"i": report_id})
+
+
+async def test_me_summary_counts_and_level(client):
+    a, b = await register_citizen(client), await register_citizen(client)
+    officer = await make_authority(client)
+    s0 = (await client.get("/me/summary", headers=a["headers"])).json()
+    assert s0 == {"reports_submitted": 0, "incidents_resolved": 0, "confirmations_received": 0, "level": None}
+    iid = (await client.post("/reports", json=body(*COLABA), headers=a["headers"])).json()["incident_id"]
+    await client.post(f"/incidents/{iid}/confirm", headers=b["headers"])
+    s1 = (await client.get("/me/summary", headers=a["headers"])).json()
+    assert s1["reports_submitted"] == 1 and s1["confirmations_received"] == 1 and s1["incidents_resolved"] == 0 and s1["level"] is None
+    # the confirming neighbour did not start the incident, so receives nothing
+    assert (await client.get("/me/summary", headers=b["headers"])).json()["confirmations_received"] == 0
+    await client.post(f"/authority/incidents/{iid}/update", json={"status": "Resolved"}, headers=officer["headers"])
+    s2 = (await client.get("/me/summary", headers=a["headers"])).json()
+    assert s2["incidents_resolved"] == 1 and s2["level"] == "contributor"
+    assert (await client.get("/me/summary")).status_code == 401
