@@ -67,6 +67,6 @@ Where the build spec was unclear or could not be followed exactly, this is the s
 40. **The report flow is a separate lazy chunk** (`ReportFlow.tsx` + `compress.ts`), so the home page loads no photo or AI code. `Brand`, categories and problem lists moved to `brand.tsx` so both chunks can use them.
 41. **The map** is still the OpenStreetMap embed iframe. It now centres on the real pin (area centre, device location or photo location), but an embed cannot report a dragged pin back, so "move the map" is only visual. A draggable map would need a map library (not in the dependency list).
 
-38. **Incident location (user-testing fixes).** `location_source` is required on `POST /reports`; ward comes from the incident point (PostGIS polygon, else nearest area centre), never the profile ward. Supersedes the "falling back to their profile area" wording in #1. The client `area` field is accepted but ignored.
-39. **Report draft survives close/Escape.** The flow stays mounted while hidden; "Start over" discards it. AI analysis re-runs only when photos, text or category change.
-40. **Hotspot impact score** is relative: 100 × area priority sum / largest area priority sum (documented in `incidents.hotspots`).
+42. **Incident location (user-testing fixes).** `location_source` is required on `POST /reports`; ward comes from the incident point (PostGIS polygon, else nearest area centre), never the profile ward. Supersedes the "falling back to their profile area" wording in #1. The client `area` field is accepted but ignored.
+43. **Report draft survives close/Escape.** The flow stays mounted while hidden; "Start over" discards it. AI analysis re-runs only when photos, text or category change.
+44. **Hotspot impact score** is relative: 100 × area priority sum / largest area priority sum (documented in `incidents.hotspots`).
