@@ -123,11 +123,18 @@ function BmcOffice() {
 }
 
 function CategoryCard({ card, lang, onClick, i }: { card: (typeof homeCards)[number]; lang: Lang; onClick: () => void; i: number }) {
+  const [ok, setOk] = useState(true);
   const label = tr(lang, card.key), desc = tr(lang, card.key.replace("cat_", "catd_") as StrKey);
+  // The artwork is mixed (photos and illustrations): each sits in a tinted panel and is blended into it so the set looks uniform.
   return <button onClick={onClick} className={`cat-card tone-${card.tone}`} style={{ "--i": i } as React.CSSProperties} aria-label={`${tr(lang, "catReport")}: ${label}`}>
-    <span className="cat-icon" aria-hidden="true"><Icon name={card.icon} size={26} /></span>
-    <span className="cat-text"><b>{label}</b><small>{desc}</small></span>
-    <span className="cat-cta">{tr(lang, "catReport")}<Icon name="arrow" size={16} /></span>
+    <span className="cat-media">
+      {ok ? <img src={`${import.meta.env.BASE_URL}categories/${card.file}`} alt="" loading="lazy" width={400} height={250} onError={() => setOk(false)} /> : <span className="cat-fallback" aria-hidden="true"><Icon name={card.icon} size={44} /></span>}
+      <span className="cat-badge" aria-hidden="true"><Icon name={card.icon} size={20} /></span>
+    </span>
+    <span className="cat-body">
+      <span className="cat-text"><b>{label}</b><small>{desc}</small></span>
+      <span className="cat-cta" aria-hidden="true"><Icon name="arrow" size={18} /></span>
+    </span>
   </button>;
 }
 
