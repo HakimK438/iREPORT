@@ -100,13 +100,28 @@ def bench_authority(base: str, n: int) -> None:
         print(f"/authority/stats      {stats_ms:.0f} ms")
 
 
+def bench_hotspots(base: str, n: int) -> None:
+    """GET /authority/hotspots (PostGIS ST_ClusterDBSCAN over open incidents of the last 30 days)."""
+    with httpx.Client(base_url=base, timeout=30) as c:
+        r = c.post("/auth/login", json={"email": "loadtest-officer@example.com", "password": "loadtest-pass-1", "role": "authority"})
+        r.raise_for_status()
+        headers = {"Authorization": f"Bearer {r.json()['access_token']}"}
+        c.get("/authority/hotspots", headers=headers).raise_for_status()  # warm-up
+        times = []
+        for _ in range(n):
+            t0 = time.perf_counter()
+            c.get("/authority/hotspots", headers=headers).raise_for_status()
+            times.append((time.perf_counter() - t0) * 1000)
+        print(f"/authority/hotspots  p50={pct(times, 50):.0f} ms  p95={pct(times, 95):.0f} ms  max={max(times):.0f} ms  (n={n})")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("what", choices=["analyze", "authority"])
+    ap.add_argument("what", choices=["analyze", "authority", "hotspots"])
     ap.add_argument("--base", default="http://localhost:8000/api/v1")
     ap.add_argument("--n", type=int, default=50)
     args = ap.parse_args()
-    (bench_analyze if args.what == "analyze" else bench_authority)(args.base, args.n)
+    {"analyze": bench_analyze, "authority": bench_authority, "hotspots": bench_hotspots}[args.what](args.base, args.n)
 
 
 if __name__ == "__main__":

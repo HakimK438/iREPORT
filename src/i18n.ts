@@ -133,11 +133,52 @@ export const STR = {
   myLatest: T("My latest reports", "मेरी ताज़ा रिपोर्ट", "माझे अलीकडील अहवाल"),
   noReports: T("No reports yet.", "अभी कोई रिपोर्ट नहीं।", "अजून अहवाल नाहीत."),
   email: T("Email", "ईमेल", "ईमेल"),
+  // my reports (drafts for native-speaker review: docs/I18N_REVIEW.md)
+  rpOnlyYours: T("Only submissions made by you appear here.", "यहाँ केवल आपके द्वारा जमा की गई रिपोर्ट दिखती हैं।", "येथे फक्त तुम्ही सादर केलेले अहवाल दिसतात."),
+  rpNewReport: T("New report", "नई रिपोर्ट", "नवीन अहवाल"),
+  rpLogin: T("Log in to see your reports.", "अपनी रिपोर्ट देखने के लिए लॉग इन करें।", "तुमचे अहवाल पाहण्यासाठी लॉग इन करा."),
+  rpLoginHelp: T("Your reports and authority updates are saved to your account.", "आपकी रिपोर्ट और प्राधिकरण के अपडेट आपके खाते में सुरक्षित रहते हैं।", "तुमचे अहवाल आणि प्राधिकरणाचे अपडेट तुमच्या खात्यात जतन केले जातात."),
+  rpLoginBtn: T("Log in", "लॉग इन", "लॉग इन"),
+  rpLoadError: T("Could not load your reports.", "आपकी रिपोर्ट लोड नहीं हो सकीं।", "तुमचे अहवाल लोड होऊ शकले नाहीत."),
+  rpEmpty: T("You have not reported anything yet.", "आपने अभी तक कुछ रिपोर्ट नहीं किया है।", "तुम्ही अजून काहीही नोंदवलेले नाही."),
+  rpEmptyHelp: T("Report a problem and its progress will appear here.", "कोई समस्या रिपोर्ट करें, उसकी प्रगति यहाँ दिखेगी।", "एखादी समस्या नोंदवा, तिची प्रगती येथे दिसेल."),
+  rpRetry: T("Retry", "फिर कोशिश करें", "पुन्हा प्रयत्न करा"),
+  rpNoPhoto: T("No photo", "कोई फ़ोटो नहीं", "फोटो नाही"),
+  rpAffected: T("citizens affected", "नागरिक प्रभावित", "नागरिक प्रभावित"),
+  rpSeverity: T("severity", "गंभीरता", "तीव्रता"),
+  rpDone: T("Done", "पूर्ण", "पूर्ण"),
+  rpWaiting: T("Waiting", "प्रतीक्षा में", "प्रतीक्षेत"),
+  rpFromAuthority: T("Message from", "संदेश भेजने वाले:", "संदेश पाठवणारे:"),
+  rpYourReply: T("Your reply", "आपका उत्तर", "तुमचे उत्तर"),
+  rpResolvedNote: T("Resolved is not the final word.", "'हल हुआ' अंतिम शब्द नहीं है।", "'निराकरण झाले' हा अंतिम शब्द नाही."),
+  rpResolvedHelp: T("After the authority marks work complete, you can verify the fix as a citizen.", "प्राधिकरण काम पूरा चिह्नित करने के बाद, आप नागरिक के रूप में समाधान की पुष्टि कर सकते हैं।", "प्राधिकरणाने काम पूर्ण झाल्याचे नोंदवल्यानंतर, तुम्ही नागरिक म्हणून निराकरणाची पुष्टी करू शकता."),
+  rpOlder: T("Show older reports", "पुरानी रिपोर्ट दिखाएँ", "जुने अहवाल दाखवा"),
+  rpLoading: T("Loading…", "लोड हो रहा है…", "लोड होत आहे…"),
+  st_Reported: T("Reported", "दर्ज", "नोंदवले"),
+  st_UnderReview: T("Under Review", "समीक्षाधीन", "तपासणीत"),
+  st_InProgress: T("In Progress", "कार्य जारी", "काम सुरू"),
+  st_Resolved: T("Resolved", "हल हुआ", "निराकरण झाले"),
+  sev_Low: T("Low", "कम", "कमी"),
+  sev_Medium: T("Medium", "मध्यम", "मध्यम"),
+  sev_High: T("High", "उच्च", "उच्च"),
+  sev_Critical: T("Critical", "गंभीर", "गंभीर"),
+  // community
+  cmChoose: T("Choose one of the listed areas.", "सूची में से कोई क्षेत्र चुनें।", "यादीतील एखादे क्षेत्र निवडा."),
+  cmChooseHelp: T("Or use your location to see problems near you.", "या अपने आसपास की समस्याएँ देखने के लिए अपना स्थान उपयोग करें।", "किंवा तुमच्या जवळच्या समस्या पाहण्यासाठी तुमचे स्थान वापरा."),
+  cmLoadError: T("Could not load incidents.", "घटनाएँ लोड नहीं हो सकीं।", "घटना लोड होऊ शकल्या नाहीत."),
+  cmMore: T("Show more", "और दिखाएँ", "अधिक दाखवा"),
+  cmChangeFilters: T("Change filters or select another area to see more.", "और देखने के लिए फ़िल्टर बदलें या दूसरा क्षेत्र चुनें।", "अधिक पाहण्यासाठी फिल्टर बदला किंवा दुसरे क्षेत्र निवडा."),
+  cmLocating: T("Finding you…", "आपका स्थान खोजा जा रहा है…", "तुमचे स्थान शोधत आहे…"),
+  cmNoLocation: T("Location is not available on this device.", "इस डिवाइस पर स्थान उपलब्ध नहीं है।", "या डिव्हाइसवर स्थान उपलब्ध नाही."),
 } satisfies Record<string, Row>;
 
 export type StrKey = keyof typeof STR;
 
 export const tr = (lang: Lang, key: StrKey): string => STR[key][lang] ?? STR[key].en;
+
+/** Display name for an API status or severity value (the API keeps English). */
+export const statusName = (lang: Lang, s: string): string => { const k = `st_${s.replace(" ", "")}` as StrKey; return k in STR ? tr(lang, k) : s; };
+export const severityName = (lang: Lang, s: string): string => { const k = `sev_${s}` as StrKey; return k in STR ? tr(lang, k) : s; };
 
 /** Question/option label table entry: a plain string for English-only values or a per-language row. */
 export type Label = Row;

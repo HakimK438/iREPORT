@@ -45,7 +45,7 @@ cd backend && python -m venv .venv && .venv/Scripts/pip install -r requirements-
 ml/.venv/Scripts/python -m pytest ml/tests                     # text runtime == scikit-learn
 ```
 
-There are 40 backend tests and 2 ML tests, all passing. They cover:
+There are 84 backend tests and 2 ML tests, all passing. They cover:
 - auth: refresh rotation and reuse detection, rate limits, role checks, authority approval and revocation
 - the merge rule (50 m, same category, open, under 14 days), with no double counting
 - keyset paging returning every row exactly once
@@ -72,6 +72,7 @@ See [ml/README.md](ml/README.md).
 | API image < 700 MB, no PyTorch | **509 MB**. No torch, no scikit-learn, onnxruntime only |
 | Stored photo 100–300 KB, thumb < 40 KB, nothing > 500 KB | Real 1400×1829 street photo (428 KB JPEG) stored as **173 KB** WebP at 980×1280 with a **19 KB** thumbnail. Hard cap 500 KB (quality steps down). Worst case, a synthetic full-noise photo: 403 KB |
 | `/authority/incidents` p95 < 300 ms with 100,000 incidents | **p95 76 ms, p50 34 ms, max 166 ms** (300 mixed requests: every sort, filters, search, cursor pages; warm cache) |
+| `/authority/hotspots` p95 < 300 ms with 100,000 incidents | **p95 82 ms, p50 57 ms** with the 60 s in-process cache; **uncached p95 1076 ms** (first call after each expiry, about 1 s). Run: `python -m scripts.bench hotspots --n 30` |
 | DB growth < 1 KB per report row set | **534 B** row data (report + incident + status event + 1 photo row). About 1.5 KB including all indexes |
 | Home page loads no AI or compression code | Report flow and compression are a separate 19.5 KB chunk; the main bundle has no `canvas.toBlob` |
 
@@ -105,3 +106,6 @@ Rate limits apply to login (by IP and by email), register and analyze. Backgroun
 3. **API:** build `backend/` (target `runtime`). It is one uvicorn worker per container; the image runs `alembic upgrade head` on start. Set `ENV=production`, a random `JWT_SECRET`, `COOKIE_SECURE=true`, `CORS_ORIGINS` (the frontend origin), and `ADMIN_EMAIL` / `ADMIN_PASSWORD` for the first start. Put it behind HTTPS. With more than one replica, set `ENABLE_SCHEDULER=false` on all but one, and note that rate limits become per replica (DECISIONS.md #33).
 4. **Frontend:** `VITE_API_URL=https://api.example.org/api/v1 pnpm build`, then serve `dist/`.
 5. **Before launch:** have the data handling reviewed by someone qualified under India's DPDP Act, 2023. The app collects name, email, optional phone and area, shows a consent line at registration, and supports data export and account deletion. It strips photo metadata and logs authority actions in `status_events` and `messages`.
+
+
+For reviewers: [docs/AI_AND_GIS.md](docs/AI_AND_GIS.md) explains the models, GIS and decision logic.

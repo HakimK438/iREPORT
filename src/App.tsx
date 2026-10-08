@@ -4,7 +4,7 @@ import { Icon, type IconName } from "./Icon";
 import { AREAS, AREA_CENTRES, STATUSES } from "./store";
 import { api, refreshSession, setSessionLostHandler, setToken, type ApiUser, type IncidentPublic, type Page as ApiPage, type Session } from "./api";
 import { Brand, distanceLabel, homeCards, statusLabel } from "./brand";
-import { tr } from "./i18n";
+import { severityName, statusName, tr } from "./i18n";
 import AuthPage from "./AuthPage";
 import AuthorityDashboard from "./AuthorityDashboard";
 import AdminPanel from "./AdminPanel";
@@ -182,8 +182,8 @@ function Community({ lang, user, go, defaultArea }: { lang: Lang; user: User | n
     onSuccess: (res, i) => qc.setQueryData<InfiniteData<ApiPage<IncidentPublic>>>(key, d => d && { ...d, pages: d.pages.map(p => ({ ...p, items: p.items.map(x => x.id === i.id ? { ...x, confirmed_by_me: res.confirmed, affected_count: res.affected_count } : x) })) }),
   });
   const locate = () => {
-    if (!navigator.geolocation) { setLocNote("Location is not available on this device."); return; }
-    setLocNote("Finding you…");
+    if (!navigator.geolocation) { setLocNote(tr(lang, "cmNoLocation")); return; }
+    setLocNote(tr(lang, "cmLocating"));
     navigator.geolocation.getCurrentPosition(p => { setHere({ lat: p.coords.latitude, lng: p.coords.longitude }); setLocNote(""); }, () => setLocNote("Could not get your location. Choose an area instead."), { timeout: 10000, maximumAge: 60000 });
   };
   const pickArea = (v: string) => { setArea(v); setHere(null); };
@@ -194,13 +194,13 @@ function Community({ lang, user, go, defaultArea }: { lang: Lang; user: User | n
     <div className="area-bar"><div><small>{t.area}</small><label><Icon name="search" /><input aria-label="Search area" list="area-list" value={here ? "Your location" : area} onChange={e => pickArea(AREAS.find(a => a.toLowerCase() === e.target.value.trim().toLowerCase()) ?? e.target.value)} /><datalist id="area-list">{AREAS.map(a => <option key={a} value={a} />)}</datalist></label></div><button className="secondary" onClick={locate}><Icon name="pin" /> Use my location</button><select value={AREAS.includes(area) ? area : ""} onChange={e => pickArea(e.target.value)}>{!AREAS.includes(area) && <option value="">Choose an area</option>}{AREAS.map(a => <option key={a}>{a}</option>)}</select></div>
     {locNote && <p className="muted-line">{locNote}</p>}
     <div className="filter-row"><div>{Object.keys(COMMUNITY_FILTERS).map(x => <button key={x} className={filter === x ? "active" : ""} onClick={() => setFilter(x)}>{x}</button>)}</div><select aria-label="Sort incidents" value={sort} onChange={e => setSort(e.target.value)}>{Object.keys(COMMUNITY_SORT).map(s => <option key={s}>{s}</option>)}</select></div>
-    {!centre && <div className="empty-note"><Icon name="search" /><span><b>Choose one of the listed areas.</b><small>Or use your location to see problems near you.</small></span></div>}
+    {!centre && <div className="empty-note"><Icon name="search" /><span><b>{tr(lang, "cmChoose")}</b><small>{tr(lang, "cmChooseHelp")}</small></span></div>}
     {feed.isPending && centre && <div className="incident-grid">{[0, 1, 2].map(k => <div key={k} className="incident-card skeleton-card"><div className="skeleton-block tall" /><div className="incident-body"><div className="skeleton-line w50" /><div className="skeleton-line w90" /><div className="skeleton-line w60" /></div></div>)}</div>}
-    {feed.isError && <div className="empty-note error"><Icon name="alert" /><span><b>Could not load incidents.</b><small>{(feed.error as Error).message}</small></span><button className="secondary compact" onClick={() => feed.refetch()}>Retry</button></div>}
-    {items.length > 0 && <div className="incident-grid">{items.map(i => <IncidentCard key={i.id} title={i.title} area={[i.area ?? "Mumbai", distanceLabel(i.distance_m)].filter(Boolean).join(" · ")} type={i.category.toUpperCase()} affected={i.affected_count} image={i.thumb_url} severity={`${i.severity.toUpperCase()} SEVERITY`} status={statusLabel(i.status)} confirmed={!!i.confirmed_by_me || !!i.reported_by_me} busy={confirm.isPending && confirm.variables?.id === i.id} onConfirm={() => onConfirm(i)} />)}</div>}
-    {feed.hasNextPage && <button className="secondary load-more" onClick={() => feed.fetchNextPage()} disabled={feed.isFetchingNextPage}>{feed.isFetchingNextPage ? "Loading…" : "Show more"}</button>}
+    {feed.isError && <div className="empty-note error"><Icon name="alert" /><span><b>{tr(lang, "cmLoadError")}</b><small>{(feed.error as Error).message}</small></span><button className="secondary compact" onClick={() => feed.refetch()}>{tr(lang, "rpRetry")}</button></div>}
+    {items.length > 0 && <div className="incident-grid">{items.map(i => <IncidentCard key={i.id} title={i.title} area={[i.area ?? "Mumbai", distanceLabel(i.distance_m)].filter(Boolean).join(" · ")} type={i.category.toUpperCase()} affected={i.affected_count} image={i.thumb_url} severity={`${severityName(lang, i.severity).toUpperCase()} ${tr(lang, "rpSeverity").toUpperCase()}`} status={statusLabel(i.status)} confirmed={!!i.confirmed_by_me || !!i.reported_by_me} busy={confirm.isPending && confirm.variables?.id === i.id} onConfirm={() => onConfirm(i)} />)}</div>}
+    {feed.hasNextPage && <button className="secondary load-more" onClick={() => feed.fetchNextPage()} disabled={feed.isFetchingNextPage}>{feed.isFetchingNextPage ? tr(lang, "rpLoading") : tr(lang, "cmMore")}</button>}
     {confirm.isError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {(confirm.error as Error).message}</div>}
-    {feed.isSuccess && <div className="empty-note"><Icon name="check" /><span><b>{items.length ? `Showing civic incidents for ${where}.` : `No civic incidents found for ${where}.`}</b><small>Change filters or select another area to see more.</small></span></div>}
+    {feed.isSuccess && <div className="empty-note"><Icon name="check" /><span><b>{items.length ? `Showing civic incidents for ${where}.` : `No civic incidents found for ${where}.`}</b><small>{tr(lang, "cmChangeFilters")}</small></span></div>}
   </main>;
 }
 
@@ -217,18 +217,18 @@ function Reports({ lang, user, open, go }: { lang: Lang; user: User | null; open
     refetchInterval: 60_000,
   });
   const items = mine.data?.pages.flatMap(p => p.items) ?? [];
-  const fmt = (ts: string) => new Date(ts).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-  return <main className="page section"><div className="page-heading"><div><span className="eyebrow">MY REPORTS</span><h1>{copy[lang].reports}</h1><p>Only submissions made by you appear here.</p></div><button className="primary" onClick={() => open()}><Icon name="plus" /> New report</button></div>
-    {!user && <div className="empty-note"><Icon name="shield" /><span><b>Log in to see your reports.</b><small>Your reports and authority updates are saved to your account.</small></span><button className="primary compact" onClick={() => go("auth")}>Log in</button></div>}
+  const fmt = (ts: string) => new Date(ts).toLocaleString(lang === "en" ? "en-IN" : lang === "hi" ? "hi-IN" : "mr-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return <main className="page section"><div className="page-heading"><div><span className="eyebrow">MY REPORTS</span><h1>{copy[lang].reports}</h1><p>{tr(lang, "rpOnlyYours")}</p></div><button className="primary" onClick={() => open()}><Icon name="plus" /> {tr(lang, "rpNewReport")}</button></div>
+    {!user && <div className="empty-note"><Icon name="shield" /><span><b>{tr(lang, "rpLogin")}</b><small>{tr(lang, "rpLoginHelp")}</small></span><button className="primary compact" onClick={() => go("auth")}>{tr(lang, "rpLoginBtn")}</button></div>}
     {user && mine.isPending && [0, 1].map(k => <div className="report-shell skeleton-card" key={k} style={{ marginBottom: 18 }}><div className="report-summary"><div className="skeleton-block thumb" /><div style={{ flex: 1 }}><div className="skeleton-line w50" /><div className="skeleton-line w90" /><div className="skeleton-line w60" /></div></div></div>)}
-    {user && mine.isError && <div className="empty-note error"><Icon name="alert" /><span><b>Could not load your reports.</b><small>{(mine.error as Error).message}</small></span><button className="secondary compact" onClick={() => mine.refetch()}>Retry</button></div>}
-    {user && mine.isSuccess && items.length === 0 && <div className="empty-note"><Icon name="check" /><span><b>You have not reported anything yet.</b><small>Report a problem and its progress will appear here.</small></span></div>}
-    {items.map(i => <div className="report-shell" key={i.report_id} style={{ marginBottom: 18 }}><div className="report-summary">{i.thumb_url ? <img src={i.thumb_url} alt="Report evidence" loading="lazy" /> : <div className="no-photo"><Icon name="camera" size={22} /><small>No photo</small></div>}<div><span className={`pill st-${i.status.toLowerCase().replace(" ", "-")}`}>{i.status.toUpperCase()}</span><h3>{i.title}</h3><p><Icon name="pin" size={15} /> {i.area ?? "Mumbai"}{i.department ? ` · ${i.department}` : ""}{i.affected_count > 1 ? ` · ${i.affected_count} citizens affected` : ""}</p><small>{i.public_id} · {fmt(i.created_at)} · {i.severity} severity</small></div></div>
-      <div className="timeline t4">{STATUSES.map((x, k) => { const reached = k <= STATUSES.indexOf(i.status); const at = [...i.history].reverse().find(h => h.status === x)?.at; return <div className={reached ? "done" : ""} key={x}><span>{reached && <Icon name="check" size={14} />}</span><b>{x}</b><small>{reached && at ? fmt(at) : reached ? "Done" : "Waiting"}</small></div>; })}</div>
-      {i.messages.length > 0 && <div className="thread">{i.messages.map(m => <div key={m.id} className={`msg ${m.from}`}><small>{m.from === "authority" ? `Message from ${m.by}` : m.by === "You" ? "Your reply" : m.by}</small><p>{m.text}</p></div>)}</div>}
+    {user && mine.isError && <div className="empty-note error"><Icon name="alert" /><span><b>{tr(lang, "rpLoadError")}</b><small>{(mine.error as Error).message}</small></span><button className="secondary compact" onClick={() => mine.refetch()}>{tr(lang, "rpRetry")}</button></div>}
+    {user && mine.isSuccess && items.length === 0 && <div className="empty-note"><Icon name="check" /><span><b>{tr(lang, "rpEmpty")}</b><small>{tr(lang, "rpEmptyHelp")}</small></span></div>}
+    {items.map(i => <div className="report-shell" key={i.report_id} style={{ marginBottom: 18 }}><div className="report-summary">{i.thumb_url ? <img src={i.thumb_url} alt="Report evidence" loading="lazy" /> : <div className="no-photo"><Icon name="camera" size={22} /><small>{tr(lang, "rpNoPhoto")}</small></div>}<div><span className={`pill st-${i.status.toLowerCase().replace(" ", "-")}`}>{statusName(lang, i.status).toUpperCase()}</span><h3>{i.title}</h3><p><Icon name="pin" size={15} /> {i.area ?? "Mumbai"}{i.department ? ` · ${i.department}` : ""}{i.affected_count > 1 ? ` · ${i.affected_count} ${tr(lang, "rpAffected")}` : ""}</p><small>{i.public_id} · {fmt(i.created_at)} · {severityName(lang, i.severity)} {tr(lang, "rpSeverity")}</small></div></div>
+      <div className="timeline t4">{STATUSES.map((x, k) => { const reached = k <= STATUSES.indexOf(i.status); const at = [...i.history].reverse().find(h => h.status === x)?.at; return <div className={reached ? "done" : ""} key={x}><span>{reached && <Icon name="check" size={14} />}</span><b>{statusName(lang, x)}</b><small>{reached && at ? fmt(at) : reached ? tr(lang, "rpDone") : tr(lang, "rpWaiting")}</small></div>; })}</div>
+      {i.messages.length > 0 && <div className="thread">{i.messages.map(m => <div key={m.id} className={`msg ${m.from}`}><small>{m.from === "authority" ? `${tr(lang, "rpFromAuthority")} ${m.by}` : m.by === "You" ? tr(lang, "rpYourReply") : m.by}</small><p>{m.text}</p></div>)}</div>}
       {i.messages.some(m => m.from === "authority") && <ReplyBox incidentId={i.incident_id} />}
-      <div className="resolution-note"><Icon name="shield" /><p><b>Resolved is not the final word.</b><br />After the authority marks work complete, you can verify the fix as a citizen.</p></div></div>)}
-    {mine.hasNextPage && <button className="secondary load-more" onClick={() => mine.fetchNextPage()} disabled={mine.isFetchingNextPage}>{mine.isFetchingNextPage ? "Loading…" : "Show older reports"}</button>}
+      <div className="resolution-note"><Icon name="shield" /><p><b>{tr(lang, "rpResolvedNote")}</b><br />{tr(lang, "rpResolvedHelp")}</p></div></div>)}
+    {mine.hasNextPage && <button className="secondary load-more" onClick={() => mine.fetchNextPage()} disabled={mine.isFetchingNextPage}>{mine.isFetchingNextPage ? tr(lang, "rpLoading") : tr(lang, "rpOlder")}</button>}
   </main>;
 }
 

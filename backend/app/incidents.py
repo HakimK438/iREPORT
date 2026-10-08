@@ -2,6 +2,7 @@
 
 import json
 import math
+import time
 import uuid
 
 from sqlalchemy import text
@@ -112,8 +113,16 @@ def impact_score(max_priority: int, incident_count: int) -> int:
     return min(100, round(0.6 * max_priority + 0.4 * min(100, 8 * incident_count)))
 
 
+_hotspot_cache: tuple[float, list[dict]] | None = None
+
+
 async def hotspots(db: AsyncSession, limit: int = 5) -> list[dict]:
-    """DBSCAN hotspots of open incidents (last 30 days), highest impact first."""
+    """DBSCAN hotspots of open incidents (last 30 days), highest impact first. The result is cached in this
+    process for HOTSPOT_CACHE_SECONDS: clustering 100k rows takes about a second and the dashboard polls it."""
+    global _hotspot_cache
+    ttl = get_settings().hotspot_cache_seconds
+    if ttl and _hotspot_cache and time.monotonic() - _hotspot_cache[0] < ttl:
+        return _hotspot_cache[1][:limit]
     out = []
     for r in (await db.execute(text(HOTSPOT_SQL))).all():
         cats = r.categories or []
@@ -125,6 +134,7 @@ async def hotspots(db: AsyncSession, limit: int = 5) -> list[dict]:
             "lat": r.lat, "lng": r.lng, "incident_ids": r.incident_ids,
         })
     out.sort(key=lambda h: (-h["impact_score"], -h["incident_count"], h["id"]))
+    _hotspot_cache = (time.monotonic(), out)
     return out[:limit]
 
 

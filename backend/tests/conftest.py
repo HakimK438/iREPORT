@@ -14,7 +14,7 @@ os.environ["MODELS_DIR"] = str(_HERE / ".models")
 os.environ.update(
     ENV="test", STORAGE_BACKEND="memory", ENABLE_SCHEDULER="false",
     ADMIN_EMAIL="admin@example.com", ADMIN_PASSWORD="admin-pass-123",
-    JWT_SECRET="test-secret-test-secret-test-secret-123", RATE_REGISTER="1000",
+    JWT_SECRET="test-secret-test-secret-test-secret-123", RATE_REGISTER="1000", HOTSPOT_CACHE_SECONDS="0",
 )
 
 import asyncio  # noqa: E402
