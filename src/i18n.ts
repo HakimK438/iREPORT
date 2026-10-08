@@ -190,6 +190,15 @@ export const STR = {
   pf_Get_clear_answers: T("Get clear answers", "स्पष्ट उत्तर पाएँ", "स्पष्ट उत्तरे मिळवा"),
   pfEyebrow: T("PROFILE", "प्रोफ़ाइल", "प्रोफाइल"),
   pfIntro: T("Preferences, support and practical civic tools.", "पसंद, सहायता और व्यावहारिक नागरिक उपकरण।", "आवडीनिवडी, मदत आणि उपयुक्त नागरी साधने."),
+  // landing category cards
+  catd_pothole: T("Potholes, cracks and broken footpaths", "गड्ढे, दरारें और टूटे फुटपाथ", "खड्डे, भेगा आणि तुटलेले पदपथ"),
+  catd_garbage: T("Overflowing bins, dumping and uncollected waste", "ओवरफ्लो डिब्बे, डंपिंग और न उठा कचरा", "ओसंडणारे डबे, कचरा टाकणे आणि न उचललेला कचरा"),
+  catd_streetlight: T("Lights that are off, flickering or damaged", "बंद, टिमटिमाती या क्षतिग्रस्त लाइटें", "बंद, लुकलुकणारे किंवा खराब दिवे"),
+  catd_water: T("Pipe leaks, blocked drains and waterlogging", "पाइप लीक, जाम नालियाँ और जलभराव", "पाईप गळती, तुंबलेल्या गटारी आणि पाणी साचणे"),
+  catd_electrical: T("Exposed wires, leaning poles and damaged boxes", "खुले तार, झुके खंभे और क्षतिग्रस्त बॉक्स", "उघड्या तारा, वाकलेले खांब आणि खराब बॉक्स"),
+  catd_other: T("Any other problem in a public space", "सार्वजनिक स्थान की कोई अन्य समस्या", "सार्वजनिक जागेतील इतर कोणतीही समस्या"),
+  catReport: T("Report", "रिपोर्ट करें", "अहवाल द्या"),
+  catEyebrow: T("WHAT YOU CAN REPORT", "आप क्या रिपोर्ट कर सकते हैं", "तुम्ही काय नोंदवू शकता"),
 } satisfies Record<string, Row>;
 
 export type StrKey = keyof typeof STR;

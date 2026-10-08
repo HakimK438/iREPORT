@@ -22,13 +22,13 @@ export const categoryLabel = (name: string) => CATEGORY_LABEL[MERGED_CATEGORY[na
 
 /** Home page cards. `file` is looked up in public/categories/; when it is missing the emoji card is shown. */
 export const homeCards = [
-  { key: "cat_pothole", emoji: "🕳️", file: "pothole.jpg", flow: "Pothole" },
-  { key: "cat_garbage", emoji: "🗑️", file: "garbage.jpg", flow: "Garbage" },
-  { key: "cat_streetlight", emoji: "💡", file: "streetlight.jpg", flow: "Streetlight" },
-  { key: "cat_water", emoji: "💧", file: "water-leakage.webp", flow: "Water Leakage" },
-  { key: "cat_electrical", emoji: "⚡", file: "electrical.jpg", flow: "Electrical Hazard" },
-  { key: "cat_other", emoji: "🚧", file: "other.avif", flow: "Other" },
-] as const;
+  { key: "cat_pothole", emoji: "🕳️", file: "pothole.jpg", flow: "Pothole", icon: "road", tone: "slate" },
+  { key: "cat_garbage", emoji: "🗑️", file: "garbage.jpg", flow: "Garbage", icon: "waste", tone: "green" },
+  { key: "cat_streetlight", emoji: "💡", file: "streetlight.jpg", flow: "Streetlight", icon: "light", tone: "amber" },
+  { key: "cat_water", emoji: "💧", file: "water-leakage.webp", flow: "Water Leakage", icon: "water", tone: "blue" },
+  { key: "cat_electrical", emoji: "⚡", file: "electrical.jpg", flow: "Electrical Hazard", icon: "bolt", tone: "red" },
+  { key: "cat_other", emoji: "🚧", file: "other.avif", flow: "Other", icon: "plus", tone: "violet" },
+] as const satisfies readonly { key: string; emoji: string; file: string; flow: string; icon: IconName; tone: string }[];
 
 export const statusLabel = (s: string) => (s === "Reported" ? "Pending" : s === "Under Review" ? "Under review" : s === "In Progress" ? "In progress" : s);
 

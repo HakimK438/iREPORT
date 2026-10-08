@@ -14,3 +14,5 @@ Not yet translated (English only): Auth page, Profile details, FAQ, reply box, a
 Check: `node scripts/check-i18n.mjs` (empty strings and key parity only; it cannot judge translation quality).
 
 Also drafted in this round: profile menu (`pf_*`), contribution labels (`resolvedCount`, `confirmsReceived`, `levelContributor`, `levelTrusted`), `pfEyebrow`, `pfIntro`, `photoNotAnalysed`, and the reworded `noImageModel`.
+
+Landing category cards: `catd_pothole` ... `catd_other`, `catReport`, `catEyebrow`.

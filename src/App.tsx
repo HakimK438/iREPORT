@@ -4,7 +4,7 @@ import { Icon, type IconName } from "./Icon";
 import { AREAS, AREA_CENTRES, STATUSES } from "./store";
 import { api, refreshSession, setSessionLostHandler, setToken, type ApiUser, type IncidentPublic, type Page as ApiPage, type Session } from "./api";
 import { Brand, distanceLabel, homeCards, statusLabel } from "./brand";
-import { menuText, severityName, statusName, tr } from "./i18n";
+import { menuText, severityName, statusName, tr, type StrKey } from "./i18n";
 import AuthPage from "./AuthPage";
 import AuthorityDashboard from "./AuthorityDashboard";
 import AdminPanel from "./AdminPanel";
@@ -122,12 +122,12 @@ function BmcOffice() {
   return <aside className="bmc-card" aria-label="BMC head office"><img src={media("bmc-headquarters.jpg")} alt="BMC headquarters building at Fort, Mumbai" /><div className="bmc-card-body"><span className="eyebrow">BMC HEAD OFFICE</span><h3>Brihanmumbai Municipal Corporation</h3><div className="bmc-row"><span><Icon name="pin" size={18} /></span><p><b>Headquarters</b>Mahapalika Marg, opposite CSMT, Fort, Mumbai 400001</p></div><div className="bmc-row"><span><Icon name="phone" size={18} /></span><p><b>Civic helpline · 24x7</b>1916 &nbsp;·&nbsp; Head office: 022 2275 4000</p></div><div className="bmc-row"><span><Icon name="map" size={18} /></span><p><b>Ward offices</b>Local complaints are handled by your ward office. Find yours at mcgm.gov.in.</p></div><div className="bmc-actions"><a className="primary" href={bmcMapsUrl} target="_blank" rel="noreferrer"><Icon name="map" size={18} /> Get directions</a><a className="secondary" href="tel:1916"><Icon name="phone" size={18} /> Call 1916</a></div></div></aside>;
 }
 
-function CategoryCard({ card, label, onClick, i }: { card: (typeof homeCards)[number]; label: string; onClick: () => void; i: number }) {
-  const [ok, setOk] = useState(true);
-  // Real photo from public/categories/ when present; otherwise the emoji card. Fixed aspect ratio, so no layout shift.
-  return <button onClick={onClick} className="category-card cc-photo" style={{ "--i": i } as React.CSSProperties}>
-    <span className="cc-media">{ok ? <img src={`${import.meta.env.BASE_URL}categories/${card.file}`} alt={label} loading="lazy" width={400} height={300} onError={() => setOk(false)} /> : <span className="cc-emoji" aria-hidden="true">{card.emoji}</span>}</span>
-    <b>{card.emoji} {label}</b><Icon name="plus" size={18} />
+function CategoryCard({ card, lang, onClick, i }: { card: (typeof homeCards)[number]; lang: Lang; onClick: () => void; i: number }) {
+  const label = tr(lang, card.key), desc = tr(lang, card.key.replace("cat_", "catd_") as StrKey);
+  return <button onClick={onClick} className={`cat-card tone-${card.tone}`} style={{ "--i": i } as React.CSSProperties} aria-label={`${tr(lang, "catReport")}: ${label}`}>
+    <span className="cat-icon" aria-hidden="true"><Icon name={card.icon} size={26} /></span>
+    <span className="cat-text"><b>{label}</b><small>{desc}</small></span>
+    <span className="cat-cta">{tr(lang, "catReport")}<Icon name="arrow" size={16} /></span>
   </button>;
 }
 
@@ -138,7 +138,7 @@ function Home({ open, go, lang }: { open: (category?: string) => void; go: (p: P
       <div className="hero-copy"><h1>{t.hero}</h1><div className="cta-row"><button className="primary large" onClick={() => open()}><Icon name="camera" />{t.start}<Icon name="arrow" /></button><button className="secondary large" onClick={() => go("community")}>{t.explore}</button></div></div>
       <div className="hero-visual"><img src={media("bmc-headquarters.jpg")} alt="Brihanmumbai Municipal Corporation headquarters, Fort, Mumbai" /><div className="location-pill"><Icon name="pin" size={16} /> Fort, Mumbai</div></div>
     </section>
-    <Reveal className="section category-section"><div className="section-heading"><h2>{t.what}</h2></div><div className="category-grid">{homeCards.map((c, i) => <CategoryCard key={c.key} card={c} i={i} label={tr(lang, c.key)} onClick={() => open(c.flow)} />)}</div></Reveal>
+    <Reveal className="section category-section"><div className="section-heading cat-heading"><div><span className="eyebrow">{tr(lang, "catEyebrow")}</span><h2>{t.what}</h2></div><p>{t.whatSub}</p></div><div className="cat-grid" role="list">{homeCards.map((c, i) => <CategoryCard key={c.key} card={c} i={i} lang={lang} onClick={() => open(c.flow)} />)}</div></Reveal>
     <Reveal id="help" className="section help-section"><Faq /><BmcOffice /></Reveal>
     <Reveal className="section final-cta"><div><span>READY WHEN YOU ARE</span><h2>Help Mumbai notice what matters.</h2></div><button className="primary large" onClick={() => open()}>Report a problem <Icon name="arrow" /></button></Reveal>
   </main>;

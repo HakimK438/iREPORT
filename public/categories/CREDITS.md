@@ -7,3 +7,5 @@ If you add stock images, list the source and licence for each one below (Wikimed
 | File | Source | Licence |
 |---|---|---|
 | pothole.jpg, garbage.jpg, streetlight.jpg, water-leakage.webp, electrical.jpg, other.avif | supplied by the project owner (from category_images/) | source and licence not recorded; confirm before public release |
+
+Note: the landing page no longer shows these images (it uses icon cards). They are still used in the report flow's category picker. `water-leakage.webp` contains a visible stock-photo watermark ("shutterstock"): replace it with a licensed or own image before public release.
