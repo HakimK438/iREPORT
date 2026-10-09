@@ -5,9 +5,9 @@ functions in SQL (see services/), so no GeoAlchemy dependency is needed.
 """
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import ARRAY, BigInteger, Boolean, DateTime, Float, ForeignKey, Integer, SmallInteger, String, Text, func
+from sqlalchemy import ARRAY, BigInteger, Boolean, Date, DateTime, Float, ForeignKey, Integer, SmallInteger, String, Text, func
 from sqlalchemy.dialects.postgresql import CITEXT, ENUM, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 from sqlalchemy.types import UserDefinedType
@@ -15,7 +15,7 @@ from sqlalchemy.types import UserDefinedType
 ROLES = ("citizen", "authority", "admin")
 APPROVALS = ("pending", "approved", "rejected")
 SEVERITIES = ("Low", "Medium", "High", "Critical")
-STATUSES = ("Reported", "Under Review", "In Progress", "Resolved")
+from .status import STATUSES  # noqa: E402  (single definition, see status.py)
 
 RoleEnum = ENUM(*ROLES, name="user_role", create_type=False)
 ApprovalEnum = ENUM(*APPROVALS, name="approval_state", create_type=False)
@@ -56,6 +56,8 @@ class Category(Base):
     name: Mapped[str] = mapped_column(Text)
     department_id: Mapped[int | None] = mapped_column(SmallInteger, ForeignKey("departments.id"))
     hazard_points: Mapped[int] = mapped_column(SmallInteger)
+    impact: Mapped[int] = mapped_column(SmallInteger, server_default="1")
+    monsoon_sensitive: Mapped[bool] = mapped_column(Boolean, server_default="false")
 
 
 class User(Base):
@@ -108,6 +110,15 @@ class Incident(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    assigned_to: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    scheduled_for: Mapped[date | None] = mapped_column(Date)
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    duplicate_of: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("incidents.id"))
+    reopen_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    status_reason: Mapped[str | None] = mapped_column(Text)
+    citizen_severity: Mapped[str] = mapped_column(SeverityEnum, server_default="Low")
+    risk: Mapped[int] = mapped_column(SmallInteger, server_default="1")
+    geo_facts: Mapped[dict] = mapped_column(JSONB, server_default="{}")
 
 
 class Report(Base):
@@ -128,6 +139,7 @@ class Report(Base):
     ai_disagreement: Mapped[dict | None] = mapped_column(JSONB)
     nlp: Mapped[dict | None] = mapped_column(JSONB)
     answers: Mapped[dict | None] = mapped_column(JSONB)
+    duplicate_of_report_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("reports.id"))
 
 
 class Media(Base):
@@ -140,6 +152,7 @@ class Media(Base):
     width: Mapped[int | None] = mapped_column(SmallInteger)
     height: Mapped[int | None] = mapped_column(SmallInteger)
     bytes: Mapped[int | None] = mapped_column(Integer)
+    incident_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("incidents.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
@@ -156,6 +169,7 @@ class StatusEvent(Base):
     incident_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("incidents.id"))
     from_status: Mapped[str | None] = mapped_column(StatusEnum)
     to_status: Mapped[str] = mapped_column(StatusEnum)
+    reason: Mapped[str | None] = mapped_column(Text)
     actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

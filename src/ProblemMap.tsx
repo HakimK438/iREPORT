@@ -1,21 +1,24 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { MapCluster, MapIncident } from "./api";
+import type { MapArea, MapCluster, MapIncident } from "./api";
+import { AREA_CENTRES, isOpen } from "./store";
+import { tr, type Lang, type StrKey } from "./i18n";
 
 /* Colour + size both encode the level, so the map does not rely on colour alone (colour-blind safe). */
-export const LEVEL_COLOUR: Record<string, string> = { Critical: "#b3261e", High: "#e8710a", Medium: "#c9a400", Low: "#2e7d6b" };
-const LEVEL_RADIUS: Record<string, number> = { Critical: 11, High: 9, Medium: 7, Low: 6 };
+export const LEVEL_COLOUR: Record<string, string> = { Emergency: "#b3261e", Urgent: "#e8710a", Routine: "#c9a400", Planned: "#2e7d6b" };
+const LEVEL_RADIUS: Record<string, number> = { Emergency: 11, Urgent: 9, Routine: 7, Planned: 6 };
 const MUMBAI: L.LatLngTuple = [19.07, 72.88];
 
-interface Props { incidents: MapIncident[]; clusters: MapCluster[]; selectedId: string | null; onSelect: (id: string) => void; fitKey: string; showClusters: boolean }
+interface Props { lang: Lang; incidents: MapIncident[]; clusters: MapCluster[]; areas: MapArea[]; selectedId: string | null; onSelect: (id: string) => void; fitKey: string; showClusters: boolean }
 
 /** Leaflet map of every incident (circle per problem) with the DBSCAN clusters as dashed rings. */
-export default function ProblemMap({ incidents, clusters, selectedId, onSelect, fitKey, showClusters }: Props) {
+export default function ProblemMap({ lang, incidents, clusters, areas, selectedId, onSelect, fitKey, showClusters }: Props) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const layer = useRef<L.LayerGroup | null>(null);
   const markers = useRef(new Map<string, L.CircleMarker>());
+  const labels = useRef<L.LayerGroup | null>(null);
   const lastFit = useRef("");
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
@@ -31,6 +34,7 @@ export default function ProblemMap({ incidents, clusters, selectedId, onSelect, 
     const m = L.map(el.current, { scrollWheelZoom: false }).setView(MUMBAI, 11);
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(m);
     layer.current = L.layerGroup().addTo(m);
+    labels.current = L.layerGroup().addTo(m);
     map.current = m;
     const ro = new ResizeObserver(() => m.invalidateSize());
     ro.observe(el.current);
@@ -48,9 +52,9 @@ export default function ProblemMap({ incidents, clusters, selectedId, onSelect, 
     }
     // Draw low-priority first so critical points end up on top.
     for (const i of [...incidents].reverse()) {
-      const resolved = i.status === "Resolved", colour = resolved ? "#8a948f" : LEVEL_COLOUR[i.level];
-      const mk = L.circleMarker([i.lat, i.lng], { radius: resolved ? 5 : LEVEL_RADIUS[i.level], color: "#fff", weight: 2, fillColor: colour, fillOpacity: resolved ? 0.6 : 0.92 })
-        .bindTooltip(`${i.title} · ${resolved ? "Resolved" : i.level} (${i.priority_score})`)
+      const resolved = !isOpen(i.status), colour = resolved ? "#8a948f" : LEVEL_COLOUR[i.response];
+      const mk = L.circleMarker([i.lat, i.lng], { radius: resolved ? 5 : LEVEL_RADIUS[i.response], color: "#fff", weight: 2, fillColor: colour, fillOpacity: resolved ? 0.6 : 0.92 })
+        .bindTooltip(`${i.title} · ${resolved ? i.status : tr(lang, `resp_${i.response}` as StrKey)}`)
         .on("click", () => onSelectRef.current(i.id)).addTo(g);
       markers.current.set(i.id, mk);
     }
@@ -60,7 +64,26 @@ export default function ProblemMap({ incidents, clusters, selectedId, onSelect, 
       lastFit.current = fitKey;
       m.fitBounds(L.latLngBounds(incidents.map(i => [i.lat, i.lng] as L.LatLngTuple)), { padding: [40, 40], maxZoom: 15 });
     }
-  }, [incidents, clusters, showClusters, fitKey]);
+  }, [incidents, clusters, showClusters, fitKey, lang]);
+
+  // Area name labels (Sion, Bandra, Ulhasnagar, ...): every seeded area at street-level zoom, only areas with open complaints when zoomed out.
+  useEffect(() => {
+    const m = map.current, g = labels.current;
+    if (!m || !g) return;
+    const withOpen = new Set(areas.filter(a => a.open > 0).map(a => a.area));
+    const draw = () => {
+      g.clearLayers();
+      const z = m.getZoom();
+      for (const [name, c] of Object.entries(AREA_CENTRES)) {
+        if (z < 12 && !withOpen.has(name)) continue;
+        if (z < 10) continue;
+        L.marker([c.lat, c.lng], { interactive: false, keyboard: false, icon: L.divIcon({ className: "area-label", html: `<span>${name}</span>`, iconSize: [0, 0] }) }).addTo(g);
+      }
+    };
+    draw();
+    m.on("zoomend", draw);
+    return () => { m.off("zoomend", draw); };
+  }, [areas]);
 
   // Highlight and centre the selected problem (only when the selection changes, not on every refresh).
   useEffect(() => {

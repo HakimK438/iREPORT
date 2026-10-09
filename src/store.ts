@@ -1,11 +1,18 @@
 /* Shared types, label lists and small helpers. All data now comes from the iREPORT API (see api.ts). */
 
 export type Role = "citizen" | "authority" | "admin";
-export type Status = "Reported" | "Under Review" | "In Progress" | "Resolved";
+export type Status = "Reported" | "Acknowledged" | "Scheduled" | "In Progress" | "Resolved" | "Closed" | "Reopened" | "On Hold" | "Rejected" | "Duplicate" | "Transferred";
+/** How soon the complaint must be made safe or done. Comes from the server (risk = impact x likelihood); never computed here. */
+export type ResponseCat = "Emergency" | "Urgent" | "Routine" | "Planned";
 export type Severity = "Low" | "Medium" | "High" | "Critical";
 export type Approval = "pending" | "approved" | "rejected";
 
-export const STATUSES: Status[] = ["Reported", "Under Review", "In Progress", "Resolved"];
+export const STATUSES: Status[] = ["Reported", "Acknowledged", "Scheduled", "In Progress", "Resolved", "Closed", "Reopened", "On Hold", "Rejected", "Duplicate", "Transferred"];
+/** The citizen-visible lifecycle, in order. Side states (Reopened, On Hold, ...) are shown as a note on the current step. */
+export const LIFECYCLE: Status[] = ["Reported", "Acknowledged", "Scheduled", "In Progress", "Resolved", "Closed"];
+/** Mirror of backend/app/status.py OPEN_STATUSES, for display only: the server decides what is open (counts, filters, merging). */
+export const OPEN_STATUSES: Status[] = ["Reported", "Acknowledged", "Scheduled", "In Progress", "Reopened", "On Hold"];
+export const isOpen = (s: string): boolean => (OPEN_STATUSES as string[]).includes(s);
 export const AREAS = ["Andheri West", "Andheri East", "Bandra", "Colaba", "Fort", "Dadar", "Goregaon", "Malad", "Borivali", "Versova", "Juhu", "Vile Parle", "Santacruz", "Jogeshwari", "Kandivali", "Dahisar", "Mahim", "Sion", "Worli", "Lower Parel", "Byculla", "Malabar Hill", "Kurla", "Ghatkopar", "Chembur", "Powai", "Vikhroli", "Bhandup", "Mulund", "Thane", "Kalyan", "Dombivli", "Navi Mumbai", "Mira Road", "Vasai", "Panvel", "Ulhasnagar", "Bhiwandi"];
 export const CATEGORY_NAMES = ["Pothole", "Garbage", "Streetlight", "Water Leakage", "Electrical Hazard", "Other"];
 export const DEPARTMENTS = ["Roads & Traffic", "Street Lighting", "Solid Waste Management", "Water Supply", "Storm Water Drains", "Electrical Safety", "General / Ward Office"];

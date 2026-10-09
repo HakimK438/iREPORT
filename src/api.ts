@@ -1,7 +1,7 @@
 /* Small fetch wrapper for the iREPORT API.
    The access token lives only in memory; the refresh token is an httpOnly cookie set by the API. */
 
-import type { Role, Severity, Status } from "./store";
+import type { ResponseCat, Role, Severity, Status } from "./store";
 
 const BASE = ((import.meta.env.VITE_API_URL as string | undefined) ?? "http://localhost:8000/api/v1").replace(/\/$/, "");
 
@@ -60,30 +60,70 @@ export function refreshSession(): Promise<Session | null> {
   return refreshing;
 }
 
+/** Downloads the filtered complaint list as CSV (a plain link cannot send the Authorization header). */
+export async function downloadCsv(params: Record<string, string | undefined>): Promise<void> {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) if (v) q.set(k, v);
+  const res = await fetch(`${BASE}/authority/analytics/export.csv?${q}`, { headers: accessToken ? { Authorization: `Bearer ${accessToken}` } : {}, credentials: "include" });
+  if (!res.ok) throw new ApiError(res.status, "export_failed", "Could not export the list. Please try again.");
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url; a.download = "complaints.csv"; document.body.appendChild(a); a.click(); a.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 /* ---------- types returned by the API ---------- */
 
 export interface ApiUser { id: string; role: Role; name: string; email: string; phone: string | null; area: string | null; lang: "en" | "hi" | "mr"; department: string | null; employee_id: string | null; approval: "pending" | "approved" | "rejected"; created_at: string }
 export interface Session { access_token: string; expires_in: number; user: ApiUser }
 export interface Msg { id: number; from: "authority" | "citizen"; by: string; text: string; at: string }
-export interface HistoryEvent { status: Status; at: string }
+export interface HistoryEvent { status: Status; at: string; reason?: string | null; note?: boolean; by?: string | null }
 export interface Page<T> { items: T[]; next_cursor: string | null; total?: number | null }
 
-export interface IncidentPublic { id: string; public_id: string; title: string; category: string; area: string | null; address_text: string | null; severity: Severity; status: Status; flags: string[]; affected_count: number; created_at: string; updated_at: string; distance_m?: number; thumb_url: string | null; sample_confidence?: number | null; confirmed_by_me?: boolean; reported_by_me?: boolean }
+export interface IncidentPublic { citizens?: number; id: string; public_id: string; title: string; category: string; area: string | null; address_text: string | null; severity: Severity; status: Status; flags: string[]; affected_count: number; created_at: string; updated_at: string; distance_m?: number; thumb_url: string | null; sample_confidence?: number | null; confirmed_by_me?: boolean; reported_by_me?: boolean }
 export interface Nlp { duration: { text: string; days: number } | null; obstruction: string | null; hazard: string[] | null; urgency: string | null; flags: string[] }
 export interface AiSummary { category: string | null; confidence: number | null; source: string | null; agreement: "agree" | "disagree" | null; disagreement: { image: string; text: string } | null; user_corrected: boolean }
-export interface MyReport { department?: string | null; citizen_message?: string | null; location_source?: string | null; ai?: { category: string | null; confidence: number | null; source: string | null; user_corrected: boolean }; report_id: string; incident_id: string; public_id: string; title: string; category: string; area: string | null; address_text: string | null; severity: Severity; status: Status; affected_count: number; created_at: string; updated_at: string; image_url: string | null; thumb_url: string | null; history: HistoryEvent[]; messages: Msg[] }
-export interface AuthorityRow extends IncidentPublic { priority_score: number; level: Severity; reasons: { label: string; pts: number }[]; department: string | null; lat: number | null; lng: number | null; location_source: string | null; ai: AiSummary; nlp: Nlp | null; citizen_message: string | null }
+export interface MyReport { photo_count?: number; max_photos?: number; reopen_count?: number; can_respond?: boolean; closes_at?: string | null; department?: string | null; citizen_message?: string | null; location_source?: string | null; ai?: { category: string | null; confidence: number | null; source: string | null; user_corrected: boolean }; report_id: string; incident_id: string; public_id: string; title: string; category: string; area: string | null; address_text: string | null; severity: Severity; status: Status; affected_count: number; created_at: string; updated_at: string; image_url: string | null; thumb_url: string | null; history: HistoryEvent[]; messages: Msg[] }
+export interface Assignee { id: string; name: string }
+export interface AuthorityRow extends IncidentPublic {
+  priority_score: number; risk: number; response: ResponseCat; response_hours: number; due_at: string | null; overdue: boolean; overdue_days: number;
+  scheduled_for: string | null; reopen_count: number; status_reason: string | null; assignee: Assignee | null; people_estimate: string | null;
+  department: string | null; lat: number | null; lng: number | null; location_source: string | null; ai: AiSummary; nlp: Nlp | null; citizen_message: string | null;
+}
 export interface Hotspot { id: number; incident_count: number; incident_ids: string[]; area: string; open_incidents: number; critical: number; affected: number; unique_citizens: number; confirmations: number; priority_sum: number; impact_score: number; categories: { category: string; count: number }[]; main_problems: string[]; lat: number; lng: number }
 export interface AdminOverview { unresolved_critical: number; departments: { department: string; open: number; critical: number; resolved: number }[]; categories: { category: string; open: number; share_pct: number; recommended_department: string | null; recommendation: string }[]; hotspots: Hotspot[] }
-export interface MapIncident { id: string; public_id: string; title: string; category: string; area: string | null; severity: Severity; status: Status; priority_score: number; level: Severity; affected_count: number; created_at: string; lat: number; lng: number; cluster: number | null }
+export interface MapIncident { id: string; public_id: string; title: string; category: string; area: string | null; severity: Severity; status: Status; priority_score: number; risk: number; response: ResponseCat; due_at: string | null; overdue: boolean; overdue_days: number; assigned: boolean; affected_count: number; created_at: string; lat: number; lng: number; cluster: number | null }
 export interface MapCluster { id: number; size: number; lat: number; lng: number; radius_m: number; critical: number; priority_sum: number; categories: { category: string; count: number }[]; areas: string[]; incident_ids: string[]; name: string }
 export interface MapArea { area: string; total: number; open: number; critical: number; resolved: number; categories: { category: string; count: number }[]; lat: number; lng: number }
 export interface MapData { incidents: MapIncident[]; clusters: MapCluster[]; areas: MapArea[]; truncated: boolean; method: { name: string; engine: string; eps_m: number; min_points: number; scope: string } }
 export interface Summary { reports_submitted: number; incidents_resolved: number; confirmations_received: number; level: "contributor" | "trusted" | null }
 export interface Contribution { reports_submitted: number; reports_verified: number; confirmations_given: number; category_corrected: number; label: string | null }
 export interface GeoResolve { area: string | null; method: "polygon" | "nearest_area_centre"; departments: Record<string, string | null> }
-export interface AuthorityDetail extends AuthorityRow { reporters: { name: string; phone: string | null; problem_type: string | null; description: string | null; reported_at: string; ai_category: string | null; ai_confidence: number | null; user_corrected: boolean; ai_source: string | null; ai_disagreement: { image: string; text: string } | null; nlp: Nlp | null; citizen_message: string | null; location_source: string | null }[]; images: { url: string; thumb_url: string }[]; history: HistoryEvent[]; messages: Msg[] }
-export interface AuthorityStats { total: number; open: number; in_progress: number; resolved: number; critical_open: number; high_open: number; new_24h: number; per_category: { category: string; total: number; open: number }[]; per_ward: { area: string | null; total: number; open: number }[] }
+export type Source = "map" | "citizen" | "records" | "calendar" | "category";
+export interface Reason { code: string; source: Source; params: { category?: string; name?: string | null; kind?: string; distance_m?: number | null; n?: number } }
+export interface EvidenceEntry { reporter: string; phone: string | null; at: string; problem_type: string | null; description: string | null; citizen_message: string | null; photos: { url: string; thumb_url: string }[] }
+export interface Near { kind: "school" | "hospital"; name: string | null; distance_m: number }
+export interface Brief extends AuthorityRow {
+  reasons: Reason[]; map_checked: boolean; duplicate_of: string | null;
+  what: { problem: string | null; category: string; address: string | null; near: Near | null };
+  where: { address: string | null; area: string | null; lat: number; lng: number; point_source: string | null };
+  evidence: EvidenceEntry[];
+  history_here: { count: number; days: number; radius_m: number; since: string | null; items: { public_id: string; status: Status; created_at: string; resolved_at: string | null }[] };
+  nearby_open: { count: number; radius_m: number; items: { id: string; public_id: string; category: string; status: Status; distance_m: number }[] };
+  timeline: HistoryEvent[]; messages: Msg[];
+}
+export type AuthorityDetail = Brief;
+export type ChipId = "all" | "new" | "acknowledged" | "scheduled" | "in_progress" | "resolved" | "closed" | "overdue" | "unassigned";
+export interface AuthorityStats {
+  total: number; open: number; overdue: number; unassigned: number; due_today: number; emergency_open: number; urgent_open: number; new_24h: number;
+  by_status: Record<string, number>; chips: Record<ChipId, number>;
+  per_category: { category: string; total: number; open: number }[]; per_ward: { area: string | null; total: number; open: number }[];
+}
+export interface Officer { id: string; name: string; department: string | null; ward: string | null; is_me: boolean }
+export interface NearbyCheck { radius_m: number; mine: { id: string; public_id: string; category: string; status: Status; reported_at: string } | null; others: { id: string; public_id: string; category: string; title: string; status: Status; affected_count: number; distance_m: number; confirmed_by_me: boolean }[] }
+export interface UpdateBody {
+  status?: Status; message?: string; flags?: string[]; reason?: string; duplicate_of?: string; category?: string; assigned_to?: string; scheduled_for?: string;
+}
 export interface AdminAuthority { id: string; name: string; email: string; phone: string | null; area: string | null; department: string | null; employee_id: string; approval: "pending" | "approved" | "rejected"; created_at: string; decided_at: string | null }
 export interface AdminStats { pending: number; approved: number; rejected: number; citizens: number; incidents: number; reports: number }
 export interface PhotoQuality { label: "good" | "blurry" | "dark" | "low resolution"; width: number; height: number; brightness: number; sharpness: number }
@@ -121,6 +161,10 @@ export const api = {
   deleteMe: () => request<void>("/me", { method: "DELETE" }),
 
   createReport: (body: Record<string, unknown>) => request<ReportCreated>("/reports", { method: "POST", body }),
+  nearbyCheck: (lat: number, lng: number) => request<NearbyCheck>(`/reports/nearby-check${qs({ lat, lng })}`),
+  addPhotos: (incidentId: string, form: FormData) => request<{ added: number; photos_total: number }>(`/reports/${incidentId}/photos`, { method: "POST", form }),
+  confirmFixed: (id: string) => request<{ status: Status }>(`/incidents/${id}/resolution/confirm`, { method: "POST" }),
+  reopen: (id: string, reason: string) => request<{ status: Status }>(`/incidents/${id}/resolution/reopen`, { method: "POST", body: { reason } }),
   myReports: (cursor?: string) => request<Page<MyReport>>(`/reports/mine${qs({ cursor })}`),
   nearby: (p: { lat: number; lng: number; radius: number; category?: string; status?: string; sort: string; cursor?: string }) => request<Page<IncidentPublic>>(`/incidents/nearby${qs(p)}`),
   confirm: (id: string) => request<{ confirmed: boolean; affected_count: number }>(`/incidents/${id}/confirm`, { method: "POST" }),
@@ -134,10 +178,12 @@ export const api = {
   authorityMap: () => request<MapData>("/authority/map"),
   adminMap: () => request<MapData>("/admin/map"),
   adminIncident: (id: string) => request<AuthorityDetail>(`/admin/incidents/${id}`),
-  authorityStats: () => request<AuthorityStats>("/authority/stats"),
+  authorityStats: (p: Record<string, string | undefined> = {}) => request<AuthorityStats>(`/authority/stats${qs(p)}`),
+  officers: () => request<{ items: Officer[] }>("/authority/officers"),
   authorityDetail: (id: string) => request<AuthorityDetail>(`/authority/incidents/${id}`),
-  authorityUpdate: (id: string, body: { status?: Status; message?: string; flags?: string[] }) => request<unknown>(`/authority/incidents/${id}/update`, { method: "POST", body }),
-  authorityBulk: (body: { ids: string[]; status?: Status; message?: string }) => request<{ updated: number }>("/authority/incidents/bulk", { method: "POST", body }),
+  authorityUpdate: (id: string, body: UpdateBody) => request<{ status: Status }>(`/authority/incidents/${id}/update`, { method: "POST", body }),
+  authorityBulk: (body: { ids: string[]; status?: "Acknowledged" | "Scheduled" | "Resolved"; message?: string; assigned_to?: string; scheduled_for?: string }) =>
+    request<{ updated: number; skipped: { id: string; code: string; message: string }[] }>("/authority/incidents/bulk", { method: "POST", body }),
 
   adminAuthorities: (approval?: string) => request<AdminAuthority[]>(`/admin/authorities${qs({ approval })}`),
   adminDecide: (id: string, decision: "approve" | "reject" | "revoke") => request<AdminAuthority>(`/admin/authorities/${id}/decision`, { method: "POST", body: { decision } }),
@@ -173,3 +219,22 @@ export function analyze(form: FormData, onProgress: (fraction: number) => void, 
     return send();
   });
 }
+
+/* ---------- analytics (authority only) ---------- */
+export interface AnOverview { open: number; overdue: number; resolved_week: number; total: number; resolved_total: number; median_days_to_close: number | null; pct_within_sla: number | null; pct_reopened: number | null }
+export interface AnBacklog { weeks: { week: string; reported: number; closed: number; open_at_end: number }[] }
+export interface AnWard { items: { ward: string; total: number; open: number; overdue: number; median_days_to_close: number | null; lat: number | null; lng: number | null }[] }
+export interface AnType { items: { category: string; total: number; open: number; median_days_to_close: number | null; repeat_spots: number }[]; trend: { category: string; this_month: number; last_month: number }[]; repeat_days: number; repeat_radius_m: number; repeats: { public_id: string; category: string; ward: string | null; previous: string; days_after: number }[] }
+export interface AnPerformance { departments: { name: string; resolved: number; pct_within_sla: number; reopen_rate: number }[]; wards: { name: string; resolved: number; pct_within_sla: number; reopen_rate: number }[] }
+export interface AnSeason { items: { month: string; category: string; n: number }[] }
+export interface AnToday { new_today: number; closed_today: number; overdue: number; ward: string | null }
+export type AnFilters = Record<string, string | undefined>;
+export const analytics = {
+  overview: (p: AnFilters) => request<AnOverview>(`/authority/analytics/overview${qs(p)}`),
+  backlog: (p: AnFilters) => request<AnBacklog>(`/authority/analytics/backlog${qs(p)}`),
+  byWard: (p: AnFilters) => request<AnWard>(`/authority/analytics/by-ward${qs(p)}`),
+  byType: (p: AnFilters) => request<AnType>(`/authority/analytics/by-type${qs(p)}`),
+  performance: (p: AnFilters) => request<AnPerformance>(`/authority/analytics/performance${qs(p)}`),
+  season: (p: AnFilters) => request<AnSeason>(`/authority/analytics/season${qs(p)}`),
+  today: (p: AnFilters) => request<AnToday>(`/authority/analytics/today${qs(p)}`),
+};

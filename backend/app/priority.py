@@ -1,53 +1,100 @@
-"""Priority score: a port of priorityOf() from the original frontend store, kept identical to the SQL
-function ireport_priority() in migration 0001. The database stores and sorts by the score; the
-reasons are computed on read from the incident row and never stored."""
+"""Risk-based priority: risk = impact x likelihood (1-16). The SQL functions ireport_risk() / ireport_priority()
+(migration 0013) implement the same formula; tests/test_risk.py compares them on every input combination.
+
+The database stores the result (incidents.risk, incidents.priority_score, incidents.due_at); the reasons shown in
+the incident brief are computed on read from the same facts and never stored.
+"""
 
 import math
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from dataclasses import dataclass
 
-SEVERITY_POINTS = {"Critical": 40, "High": 30, "Medium": 18, "Low": 8}
-FLAG_POINTS = {"Live wiring": 20, "Injury reported": 18, "Near school": 12, "Near hospital": 12, "Flood risk": 10, "Main road": 8, "Night-time hazard": 6, "Blocks footpath": 5}
-UNKNOWN_FLAG_POINTS = 4
-FLAG_CAP = 28
-MAX_RAW = 40 + 25 + 28 + 15 + 8  # 116
+from . import risk_config as cfg
 
 
 def js_round(x: float) -> int:
-    """JavaScript Math.round for non-negative numbers (Python's round() is banker's rounding)."""
+    """Half-up rounding for non-negative numbers (Python's round() is banker's rounding; SQL uses floor(x + 0.5))."""
     return math.floor(x + 0.5)
 
 
-def level_of(score: int) -> str:
-    return "Critical" if score >= 65 else "High" if score >= 48 else "Medium" if score >= 30 else "Low"
+@dataclass(frozen=True)
+class RiskInputs:
+    base_impact: int          # categories.impact
+    citizen_severity: str     # Low | Medium | High | Critical, from the citizen's own answers
+    main_road: bool
+    sensitive: bool           # within 100 m of a school or hospital
+    citizens: int             # DISTINCT users who reported or confirmed
+    monsoon: bool             # monsoon month AND a monsoon-sensitive category
+    night: bool               # night-time hazard, or a streetlight-out complaint within 100 m
 
 
-@dataclass
-class Priority:
-    score: int
-    level: str
-    reasons: list[dict] = field(default_factory=list)
+def impact_of(base: int, citizen_severity: str) -> int:
+    raised = cfg.SEVERITY_RAISE_BY if citizen_severity in cfg.SEVERITY_RAISES else 0
+    return min(4, base + raised)
 
 
-def priority_of(severity: str, category: str, hazard_points: int, flags: list[str], status: str, created_at: datetime, affected: int, now: datetime | None = None) -> Priority:
-    now = now or datetime.now(UTC)
-    reasons: list[dict] = []
-    sev = SEVERITY_POINTS[severity]
-    reasons.append({"label": f"{severity} severity", "pts": sev})
-    reasons.append({"label": f"{category} hazard type", "pts": hazard_points})
-    flag_pts = 0
-    for f in flags:
-        pts = FLAG_POINTS.get(f, UNKNOWN_FLAG_POINTS)
-        flag_pts += pts
-        reasons.append({"label": f, "pts": pts})
-    flag_pts = min(FLAG_CAP, flag_pts)
-    days = max(0.0, (now - created_at).total_seconds() / 86400)
-    age = 0.0 if status == "Resolved" else min(15.0, days * 1.5)
-    if age >= 3:
-        reasons.append({"label": f"Open for {math.floor(days)} days", "pts": js_round(age)})
-    votes = min(8.0, math.log2(1 + max(affected, 0)) * 1.6)
-    reasons.append({"label": f"{affected} citizens affected", "pts": js_round(votes)})
-    raw = sev + hazard_points + flag_pts + age + votes
-    score = js_round(min(100.0, raw / MAX_RAW * 100))
-    reasons.sort(key=lambda r: -r["pts"])  # stable, like Array.prototype.sort
-    return Priority(score, level_of(score), reasons)
+def likelihood_of(i: RiskInputs) -> int:
+    points = int(i.main_road) + int(i.sensitive) + int(i.citizens >= cfg.CITIZENS_THRESHOLD) + int(i.monsoon) + int(i.night)
+    return min(cfg.LIKELIHOOD_MAX, cfg.LIKELIHOOD_BASE + points)
+
+
+def risk_of(i: RiskInputs) -> int:
+    return impact_of(i.base_impact, i.citizen_severity) * likelihood_of(i)
+
+
+def score_of(risk: int) -> int:
+    """Sort key 0-100: risk scaled so the existing (open, priority_score, id) index keeps working."""
+    return js_round(risk * 100 / cfg.MAX_RISK)
+
+
+def priority_of(i: RiskInputs) -> int:
+    return score_of(risk_of(i))
+
+
+def response_of(risk: int) -> tuple[str, int]:
+    """(response category, hours allowed) for a risk value."""
+    for floor, name, hours in cfg.RESPONSES:
+        if risk >= floor:
+            return name, hours
+    return cfg.RESPONSES[-1][1], cfg.RESPONSES[-1][2]
+
+
+def sla_hours(risk: int) -> int:
+    return response_of(risk)[1]
+
+
+# ---------- the "Why urgent" reasons (structured: the browser words them in the officer's language) ----------
+
+SOURCE_LABELS = ("map", "citizen", "records", "calendar", "category")
+
+
+def reasons_of(f: dict) -> list[dict]:
+    """Reasons for the risk of one incident. `f` is a row of incidents.INPUTS_SQL as a dict. Each reason says where it
+    came from: map (PostGIS on OpenStreetMap), citizen (what the reporter said), records (complaints in iREPORT),
+    calendar, category (the category table). Highest-impact reasons first."""
+    out: list[dict] = []
+    base = f["base_impact"]
+    impact = impact_of(base, f["citizen_severity"])
+    if base >= 3:
+        out.append({"code": f"impact_{base}", "source": "category", "params": {"category": f["category"]}})
+    if impact > base:
+        out.append({"code": "severity_raise", "source": "citizen", "params": {}})
+    geo = f.get("geo_facts") or {}
+    if f.get("main_road_src"):
+        road = geo.get("main_road") if f["main_road_src"] == "map" else None
+        out.append({"code": "main_road", "source": f["main_road_src"], "params": {"name": (road or {}).get("name")}})
+    if f.get("sensitive_src"):
+        place = None
+        if f["sensitive_src"] == "map":
+            kind = "school" if isinstance(geo.get("school"), dict) else "hospital"
+            place = {**geo[kind], "kind": kind}
+        else:
+            kind = "school" if "Near school" in f["flags"] else "hospital"
+            place = {"kind": kind}
+        out.append({"code": "near_sensitive", "source": f["sensitive_src"], "params": {"kind": place["kind"], "name": place.get("name"), "distance_m": place.get("distance_m")}})
+    if f["citizens"] >= cfg.CITIZENS_THRESHOLD:
+        out.append({"code": "many_citizens", "source": "records", "params": {"n": f["citizens"]}})
+    if f["monsoon"]:
+        out.append({"code": "monsoon", "source": "calendar", "params": {}})
+    if f.get("night_src"):
+        out.append({"code": "night", "source": f["night_src"], "params": {}})
+    return out

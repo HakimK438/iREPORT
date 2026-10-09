@@ -2,10 +2,10 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Icon, type IconName } from "./Icon";
 import { Brand, categories, categoryLabel, homeCards, MERGED_CATEGORY } from "./brand";
-import { analyze, api, ApiError, type Analysis, type IncidentPublic, type PhotoCheck, type ReportCreated } from "./api";
+import { analyze, api, ApiError, type Analysis, type NearbyCheck, type PhotoCheck, type ReportCreated } from "./api";
 import { compressPhoto, PhotoTooLargeError } from "./compress";
 import LocationPicker from "./LocationPicker";
-import { statusName, tr, type Lang, type StrKey } from "./i18n";
+import { statusName, tr, trf, type Lang, type StrKey } from "./i18n";
 import { QUESTIONS, fromAnswers, optLabel, type Answers } from "./questions";
 
 type Shot = { key: string; blob: Blob; url: string; cat: string };
@@ -14,7 +14,8 @@ type Ai = { phase: "idle" } | { phase: "loading"; progress: number } | { phase: 
 type Spot = { lat: number; lng: number; source: "photo" | "gps" | "manual"; label?: string };
 
 const SPEECH_LANG: Record<Lang, string> = { en: "en-IN", hi: "hi-IN", mr: "mr-IN" };
-const MAX_PHOTOS = 3, MAX_CATEGORIES = 3;
+// One category per report: the server refuses a second report from the same citizen within 50 m (any category), so extra problems at one spot cannot be filed.
+const MAX_PHOTOS = 3, MAX_CATEGORIES = 1;
 const STEP_KEYS: StrKey[] = ["stepProblem", "stepQuestions", "stepPhotoLoc", "stepReview", "stepDone"];
 
 type Recognition = { lang: string; interimResults: boolean; continuous: boolean; start: () => void; stop: () => void; onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal?: boolean }> }) => void) | null; onend: (() => void) | null; onerror: ((e: { error?: string }) => void) | null };
@@ -104,7 +105,8 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
       const rest = selected.filter(c => c !== name);
       setShots(sh => sh.map(x => (x.cat === name ? { ...x, cat: rest[0] ?? x.cat } : x))); // photos of a removed problem move to the main one
       setSelected(rest);
-    } else if (selected.length < MAX_CATEGORIES) setSelected([...selected, name]);
+    } else if (MAX_CATEGORIES === 1) setSelected([name]);
+    else if (selected.length < MAX_CATEGORIES) setSelected([...selected, name]);
   };
 
   /* ---------- evidence ---------- */
@@ -229,13 +231,16 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
   /* ---------- review data ---------- */
   const geoKey = spot ? [spot.lat.toFixed(4), spot.lng.toFixed(4)] : null;
   const geo = useQuery({ queryKey: ["geo", geoKey], queryFn: () => api.resolveGeo(spot!.lat, spot!.lng), enabled: step >= 4 && !!spot, staleTime: 5 * 60_000 });
-  const similar = useQuery({
-    queryKey: ["similar", geoKey, effective], enabled: step === 4 && !!spot,
-    queryFn: () => api.nearby({ lat: spot!.lat, lng: spot!.lng, radius: 50, category: effective, status: "Reported,Under Review,In Progress", sort: "nearest" }),
+  /* Asked right after the location is set: my own open report within 50 m (any category), or other people's open complaints there to confirm instead. */
+  const nc = useQuery({
+    queryKey: ["nearbyCheck", spot ? [spot.lat.toFixed(5), spot.lng.toFixed(5)] : null], enabled: step >= 3 && step < 5 && !!spot,
+    queryFn: () => api.nearbyCheck(spot!.lat, spot!.lng), staleTime: 15_000,
   });
+  const [photoMsg, setPhotoMsg] = useState(""), [addingPhoto, setAddingPhoto] = useState(false);
+  const addPhotoRef = useRef<HTMLInputElement>(null);
 
   // A moved pin or a changed category is a different question: ask about nearby duplicates again.
-  useEffect(() => { setDup(d => (d === "upvoted" ? d : null)); setDupError(""); }, [geoKey?.join(","), effective]);
+  useEffect(() => { setDup(d => (d === "upvoted" ? d : null)); setDupError(""); setPhotoMsg(""); }, [geoKey?.join(",")]);
 
   const pct = result?.confidence != null ? Math.round(result.confidence * 100) : null;
   const imageUsed = !!result && result.source.includes("image");
@@ -259,17 +264,35 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
   };
   const hasEvidence = mediaIds.length > 0 || !!fullText;
 
-  /** Upvote the already-reported problem instead of filing a new report. */
-  const upvote = async (item: IncidentPublic) => {
+  /** Confirm the already-reported problem instead of filing a new report. */
+  const upvote = async (item: NearbyCheck["others"][number]) => {
     setUpvoting(true); setDupError("");
     try {
       const r = await api.confirm(item.id);
-      setCreated([{ report_id: item.id, incident_id: item.id, incident_public_id: item.public_id, merged: true, affected_count: r.affected_count, severity: item.severity, status: item.status, area: item.area, department: geo.data?.departments[effective] ?? null }]);
+      setCreated([{ report_id: item.id, incident_id: item.id, incident_public_id: item.public_id, merged: true, affected_count: r.affected_count, severity: "Medium", status: item.status, area: null, department: geo.data?.departments[effective] ?? null }]);
       setDup("upvoted"); setStep(5);
     } catch (err) {
       setDupError(err instanceof ApiError ? err.message : tr(lang, "dupFailed"));
     } finally {
       setUpvoting(false);
+    }
+  };
+
+  /** "You already reported this": add photos to my own report instead of filing it again. */
+  const addPhotos = async (incidentId: string, files: FileList | null) => {
+    const list = Array.from(files ?? []);
+    if (list.length === 0) return;
+    setAddingPhoto(true); setPhotoMsg("");
+    try {
+      const form = new FormData();
+      for (const f of list) { const blob = await compressPhoto(f); form.append("photos", blob, `photo.${blob.type === "image/webp" ? "webp" : "jpg"}`); }
+      await api.addPhotos(incidentId, form);
+      setPhotoMsg(trf(lang, "nc_photoAdded", { no: nc.data?.mine?.public_id ?? "" }));
+      void nc.refetch();
+    } catch (err) {
+      setPhotoMsg(err instanceof ApiError ? err.message : err instanceof PhotoTooLargeError ? err.message : tr(lang, "nc_photoFail"));
+    } finally {
+      setAddingPhoto(false);
     }
   };
 
@@ -315,6 +338,7 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
       if (failed.length) setSubmitError(`${tr(lang, "extraFailed")}: ${failed.map(f => catName(lang, f)).join(", ")}`);
       setStep(5);
     } catch (err) {
+      if (err instanceof ApiError && err.code === "already_reported") void nc.refetch();
       setSubmitError(err instanceof ApiError ? err.message : "Could not submit. Please try again.");
     } finally {
       setSubmitting(false);
@@ -339,27 +363,31 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
     {mmPicking && categoryButtons([effective], name => { setFinalCategory(name); setMmPicking(false); })}
   </div>;
 
-  /* The same kind of problem is already open within 50 m: upvote it, or add the citizen's own report to it. */
-  const near = step === 4 ? similar.data?.items[0] : undefined;
-  const dupCard = () => !near || dup === "raise" ? null : <div className="dup-card" role="alert">
-    <h3><Icon name="pin" size={17} /> {tr(lang, "dupTitle")}</h3>
-    <p>{tr(lang, "dupBody")}</p>
-    <div className="dup-item"><b>{near.title}</b><small>{near.distance_m ?? 0} m · {near.affected_count} {tr(lang, "dupAffected")} · {statusName(lang, near.status)} · {near.public_id}</small></div>
-    {near.reported_by_me ? <p className="muted-line">{tr(lang, "dupAlreadyYours")}</p> : near.confirmed_by_me ? <p className="muted-line">{tr(lang, "dupAlreadyUpvoted")}</p> : null}
-    <div className="dup-actions">
-      {!near.reported_by_me && !near.confirmed_by_me && <button className="primary compact" onClick={() => void upvote(near)} disabled={upvoting}>{upvoting ? tr(lang, "submitting") : tr(lang, "dupUpvote")}</button>}
-      <button className="secondary compact" onClick={() => setDup("raise")}>{tr(lang, "dupRaise")}</button>
+  /* Right after the location is set: either "You already reported this (IR-...). Add a photo instead?" or "Already reported here, confirm it instead". */
+  const mine = nc.data?.mine ?? null;
+  const others = nc.data && !mine && dup !== "raise" ? nc.data.others : [];
+  const nearCard = () => mine ? <div className="dup-card" role="alert">
+      <h3><Icon name="pin" size={17} /> {trf(lang, "nc_mineTitle", { no: mine.public_id })}</h3>
+      <p>{tr(lang, "nc_mineHelp")}</p>
+      <input ref={addPhotoRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple hidden onChange={e => { void addPhotos(mine.id, e.target.files); e.target.value = ""; }} />
+      <div className="dup-actions"><button className="primary compact" onClick={() => addPhotoRef.current?.click()} disabled={addingPhoto}><Icon name="camera" size={16} /> {addingPhoto ? tr(lang, "submitting") : tr(lang, "nc_addPhoto")}</button></div>
+      {photoMsg && <p className="muted-line" role="status">{photoMsg}</p>}
     </div>
-    <small className="muted-line">{tr(lang, "dupHelp")}</small>
-    {dupError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {dupError}</div>}
-  </div>;
+    : others.length > 0 ? <div className="dup-card" role="alert">
+      <h3><Icon name="pin" size={17} /> {tr(lang, "nc_othersTitle")}</h3>
+      <p>{trf(lang, "nc_othersHelp", { m: nc.data?.radius_m ?? 50 })}</p>
+      {others.map(o => <div className="dup-item" key={o.id}><b>{o.title}</b><small>{o.distance_m} m · {trf(lang, o.affected_count === 1 ? "nc_people1" : "nc_peopleN", { n: o.affected_count })} · {statusName(lang, o.status)} · {o.public_id}</small>
+        <div className="dup-actions">{o.confirmed_by_me ? <span className="muted-line">{tr(lang, "dupAlreadyUpvoted")}</span> : <button className="primary compact" onClick={() => void upvote(o)} disabled={upvoting}>{upvoting ? tr(lang, "submitting") : tr(lang, "nc_confirm")}</button>}</div></div>)}
+      <div className="dup-actions"><button className="secondary compact" onClick={() => setDup("raise")}>{tr(lang, "dupRaise")}</button></div>
+      {dupError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {dupError}</div>}
+    </div> : null;
 
   const categoryButtons = (picked: string[], onPick: (name: string) => void, multi = false) => (
     <div className="flow-categories">{categories.map(([name, icon]) => { const n = picked.indexOf(name); return <button className={n >= 0 ? "selected" : ""} aria-pressed={n >= 0} onClick={() => onPick(name)} key={name}><CategoryThumb name={name} icon={icon} /><b>{catName(lang, name)}</b><small>{(CAT_HINT[name] ?? CAT_HINT.Other)[lang]}</small>{n >= 0 && (multi ? <em className="pick-badge">{n === 0 ? tr(lang, "mainBadge") : `+${n}`}</em> : <Icon name="check" />)}</button>; })}</div>
   );
 
   const canQuestions = selected.length > 0 && selected.every(c => { const q = QUESTIONS[c] ?? []; return q.length === 0 || !!answersBy[c]?.[q[0].id]; });
-  const canPhotoLoc = (shots.length > 0 || !!description.trim()) && busyPhotos === 0 && !!spot;
+  const canPhotoLoc = (shots.length > 0 || !!description.trim()) && busyPhotos === 0 && !!spot && !nc.data?.mine;
 
   return <div className="modal-backdrop" hidden={!open}><div className="report-modal" role="dialog" aria-modal="true" aria-label="Report a problem">
     <div className="report-top"><Brand /><button onClick={close} aria-label={tr(lang, "close")} title={tr(lang, "close")}>×</button></div>
@@ -401,6 +429,7 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
         <div className="location-actions"><button className="primary" onClick={useMyLocation} disabled={locating}><Icon name="pin" /> {locating ? tr(lang, "finding") : tr(lang, "useGps")}</button><span className="muted-line">{tr(lang, "tapMap")}</span></div>
         <LocationPicker spot={spot} onPick={(lat, lng) => pickSpot({ lat, lng, source: "manual" })} />
         {locError && <p className="muted-line">{locError}</p>}
+        {nearCard()}
         {spot ? <div className="location-details"><div><small>{tr(lang, "incidentLocation").toUpperCase()}</small><b>{sourceLabel(spot)}{spot.label ? ` · ${spot.label}` : ""}</b></div><div><small>{tr(lang, "coordinates").toUpperCase()}</small><b>{spot.lat.toFixed(5)}, {spot.lng.toFixed(5)}</b></div></div>
           : <div className="empty-note"><Icon name="pin" /><span><b>{tr(lang, "noSpot")}</b></span></div>}
         <label className="field"><span>{tr(lang, "landmark")}</span><input value={landmark} maxLength={120} onChange={e => setLandmark(e.target.value)} /></label>
@@ -408,7 +437,7 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
         <button className="primary full" disabled={!canPhotoLoc} onClick={toReview}>{tr(lang, "next")} <Icon name="arrow" /></button></>}
 
       {step === 4 && category && spot && <><span className="flow-eyebrow">4 · {tr(lang, "stepReview").toUpperCase()}</span><h2>{tr(lang, "reviewTitle")}</h2><p>{tr(lang, "reviewHelp")}</p>
-        {dupCard()}
+        {nearCard()}
         {mismatchPanel()}
         <div className="rv-card">
           {mainShots.length > 0 ? <div className="rv-photos">{mainShots.map((s, i) => { const skipped = checks.some(c => isMismatch(c) && shotOf(c)?.key === s.key); return <span className={skipped ? "rv-shot skipped" : "rv-shot"} key={s.key}><img src={s.url} alt={`Evidence photo ${i + 1}`} />{skipped && <em>{tr(lang, "mmNotAttached")}</em>}</span>; })}</div> : <div className="no-photo"><Icon name="mic" size={26} /></div>}
@@ -417,7 +446,6 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
             <div><dt>{tr(lang, "incidentLocation")} <Tag kind="you" lang={lang} /></dt><dd>{landmark ? <b>{landmark}</b> : null}{landmark ? <br /> : null}{spot.lat.toFixed(5)}, {spot.lng.toFixed(5)} · {sourceLabel(spot)} <button className="text-button" onClick={() => setStep(3)}>{tr(lang, "edit")}</button><br /><small className="muted-line">{tr(lang, "authoritySees")}</small></dd></div>
             <div><dt>{tr(lang, "areaWard")} <Tag kind="gis" lang={lang} /></dt><dd>{geo.isPending ? "…" : geo.data?.area ?? "—"}{geo.data?.method === "nearest_area_centre" ? ` (${tr(lang, "nearestArea")})` : ""}</dd></div>
             <div><dt>{tr(lang, "department")}</dt><dd>{department ?? "—"}</dd></div>
-            {similar.data && <div><dt>{tr(lang, "similarNearby")}</dt><dd>{similar.data.items.length}</dd></div>}
             <div><dt>{tr(lang, "severity")} <Tag kind="rule" lang={lang} /></dt><dd className={result?.severity === "High" || result?.severity === "Critical" ? "high" : ""}>{result?.severity ?? "—"}{result?.flags.length ? ` · ${result.flags.join(", ")}` : ""}</dd></div>
           </dl>
           {pickingCategory && <>{categoryButtons([effective], name => { setFinalCategory(name); setPickingCategory(false); })}</>}
@@ -473,8 +501,8 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
         <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /> {tr(lang, "accurate")}</label>
         {submitError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {submitError}</div>}
         {!hasEvidence && <p className="muted-line" role="status">{tr(lang, "needEvidenceAfter")}</p>}
-        {near && dup === null && <p className="muted-line" role="status">{tr(lang, "dupChoose")}</p>}
-        <button className="primary full" onClick={() => void submit()} disabled={!consent || submitting || aiBusy || !hasEvidence || (!!near && dup === null)}>{submitting ? tr(lang, "submitting") : tr(lang, "confirmSubmit")} <Icon name="arrow" /></button></>}
+        {others.length > 0 && <p className="muted-line" role="status">{tr(lang, "dupChoose")}</p>}
+        <button className="primary full" onClick={() => void submit()} disabled={!consent || submitting || aiBusy || !hasEvidence || !!mine || others.length > 0}>{submitting ? tr(lang, "submitting") : tr(lang, "confirmSubmit")} <Icon name="arrow" /></button></>}
 
       {step === 5 && created.length > 0 && <div className="success-screen"><svg className="check-anim" viewBox="0 0 52 52" aria-hidden="true"><circle className="check-circle" cx="26" cy="26" r="24" fill="none" /><path className="check-mark" fill="none" d="M14 27l8 8 16-17" /></svg>
         <h2>{dup === "upvoted" ? tr(lang, "dupDone") : tr(lang, "success")}</h2>

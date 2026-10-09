@@ -13,7 +13,7 @@ from sqlalchemy import select, text
 from app import refdata
 from app.config import get_settings
 from app.db import SessionLocal, engine
-from app.incidents import create_report
+from app.incidents import create_report, recompute_priority
 from app.models import AuthorityProfile, User
 from app.refdata import ref
 from app.schemas import ReportIn
@@ -26,13 +26,16 @@ DEMO_USERS = [
 ]
 # problem, category, area, lat, lng, description, landmark, days ago, status, extra confirmations
 DEMO_INCIDENTS = [
+    # An old, closed pothole at the same spot as the Link Road one below: it shows up as "history at this spot". It is listed FIRST
+    # so it is already Closed when the newer one is reported (an open one would absorb it).
+    ("Large", "Pothole", "Andheri West", 19.1365, 72.8297, "Pothole on Link Road, repaired in June", "Link Road", 120, "Closed", 2),
     ("Damaged", "Electrical Hazard", "Malad", 19.1874, 72.8484, "Open live wire near the school gate", "Malad school gate", 2, "Reported", 1),
     ("Large", "Pothole", "Andheri West", 19.1364, 72.8296, "Large pothole, bikes are skidding", "Link Road", 6, "In Progress", 22),
     ("Unsafe condition", "Drainage", "Bandra", 19.0596, 72.8295, "Manhole cover missing, dark at night", "Hill Road", 3, "Reported", 3),
-    ("Not working", "Streetlight", "Andheri West", 19.1201, 72.8466, "Streetlight not working for a week", "Station Road", 9, "Under Review", 10),
-    ("Overflowing", "Garbage", "Andheri West", 19.1300, 72.8350, "Overflowing waste point", "JP Road", 5, "Reported", 17),
+    ("Not working", "Streetlight", "Andheri West", 19.1201, 72.8466, "Streetlight not working for a week", "Station Road", 9, "Acknowledged", 10),
+    ("Overflowing", "Garbage", "Andheri West", 19.1300, 72.8350, "Overflowing waste point", "JP Road", 5, "Resolved", 17),
     ("Damaged", "Water Leakage", "Dadar", 19.0178, 72.8478, "Water pipe burst flooding the lane, blocks footpath", "Dadar market lane", 1, "Reported", 30),
-    ("Damaged", "Road Damage", "Borivali", 19.2307, 72.8567, "Road caved in after heavy rain on the main road", "SV Road", 2, "Under Review", 5),
+    ("Damaged", "Road Damage", "Borivali", 19.2307, 72.8567, "Road caved in after heavy rain on the main road", "SV Road", 2, "Scheduled", 5),
     ("Illegal dumping", "Garbage", "Goregaon", 19.1663, 72.8526, "Garbage dumped on the footpath", "Aarey Road", 12, "Reported", 4),
     ("Small", "Pothole", "Dadar", 19.0200, 72.8440, "Pothole near the bus stop", "Dadar TT bus stop", 14, "Resolved", 18),
 ]
@@ -79,13 +82,22 @@ async def main() -> None:
                     await db.execute(text("INSERT INTO confirmations (incident_id, user_id) VALUES (:i, :u) ON CONFLICT DO NOTHING"), {"i": r["incident_id"], "u": uid})
             await db.execute(text("UPDATE incidents SET affected_count = 1 + (SELECT count(*) FROM confirmations WHERE incident_id = :i) WHERE id = :i"), {"i": r["incident_id"]})
             if status != "Reported":
-                for st in ["Under Review", "In Progress", "Resolved"][: ["Under Review", "In Progress", "Resolved"].index(status) + 1]:
-                    await db.execute(text("INSERT INTO status_events (incident_id, from_status, to_status, actor_id, created_at) SELECT id, status, CAST(:s AS issue_status), :a, :c FROM incidents WHERE id = :i"), {"s": st, "a": officer, "i": r["incident_id"], "c": created + timedelta(days=days * 0.6)})
-                    await db.execute(text("UPDATE incidents SET status = CAST(:s AS issue_status), resolved_at = CASE WHEN :s = 'Resolved' THEN now() END WHERE id = :i"), {"s": st, "i": r["incident_id"]})
-                body = "Work completed. Please verify the fix on site." if status == "Resolved" else "A repair crew has been assigned. Work is scheduled this week." if status == "In Progress" else "We are reviewing this report."
+                steps = ["Acknowledged", "Scheduled", "In Progress", "Resolved", "Closed"]
+                for st in steps[: steps.index(status) + 1]:
+                    when = created + timedelta(days=days * 0.6)
+                    await db.execute(text("INSERT INTO status_events (incident_id, from_status, to_status, actor_id, created_at, reason) SELECT id, status, CAST(:s AS issue_status), :a, :c, :r FROM incidents WHERE id = :i"),
+                                     {"s": st, "a": officer, "i": r["incident_id"], "c": when, "r": "Demo data" if st in ("Resolved", "Closed") else None})
+                    await db.execute(text("""UPDATE incidents SET status = CAST(:s AS issue_status), assigned_to = :a, scheduled_for = CASE WHEN :s = 'Scheduled' THEN current_date + 3 ELSE scheduled_for END,
+                                             resolved_at = CASE WHEN :s = 'Resolved' THEN now() - interval '10 hours' WHEN :s = 'Closed' THEN created_at + interval '5 days' ELSE resolved_at END WHERE id = :i"""),
+                                     {"s": st, "a": officer, "i": r["incident_id"]})
+                if status in ("Resolved", "Closed"):
+                    # demo "Action Taken Report" (no after-photo file: the demo data has no images)
+                    await db.execute(text("INSERT INTO resolution_proofs (incident_id, actor_id, media_ids, note, distance_m) VALUES (:i, :a, '{}', 'Demo: patched and levelled, site cleared.', 12)"), {"i": r["incident_id"], "a": officer})
+                body = {"Resolved": "Work completed. Please confirm the fix on site.", "Closed": "Work completed and confirmed.", "In Progress": "A repair crew has been assigned. Work is scheduled this week.",
+                        "Scheduled": "A site visit is scheduled.", "Acknowledged": "We have registered this complaint."}[status]
                 await db.execute(text("INSERT INTO messages (incident_id, sender_id, body) VALUES (:i, :a, :b)"), {"i": r["incident_id"], "a": officer, "b": body})
-        await db.execute(text("""UPDATE incidents i SET priority_score = ireport_priority(i.severity, c.hazard_points, i.flags, i.status, i.created_at, i.affected_count)
-                                 FROM categories c WHERE c.id = i.category_id"""))
+        await db.execute(text("UPDATE incidents SET due_at = NULL"))  # due dates restart from each (back-dated) created_at
+        await recompute_priority(db, list((await db.scalars(text("SELECT id FROM incidents"))).all()))
         await db.commit()
     await engine.dispose()
     print(f"demo users ready; {len(DEMO_INCIDENTS)} demo incidents created")

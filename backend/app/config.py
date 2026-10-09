@@ -68,6 +68,8 @@ class Settings(BaseSettings):
     rate_login: int = 10
     rate_register: int = 5
     rate_analyze: int = 20
+    rate_reports_per_hour: int = 10  # new reports per citizen per hour
+    rate_photos_per_hour: int = 30
     hotspot_cache_seconds: int = 60  # in-process cache for the hotspot query (0 = off); see DECISIONS.md
 
     @field_validator("cors_origins", mode="before")

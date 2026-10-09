@@ -5,45 +5,57 @@ from fastapi import APIRouter, Query
 from sqlalchemy import text
 
 from .. import incidents as svc
-from .. import paging
+from .. import paging, workflow
+from ..brief import build_brief
 from ..deps import Authority, Db
 from ..errors import ApiError, not_found
-from ..models import STATUSES
-from ..priority import level_of
 from ..refdata import ref
 from ..schemas import AuthorityUpdate, BulkUpdate
-from ..storage import get_storage
+from ..status import STATUSES, is_open, open_sql
 
 router = APIRouter(prefix="/authority", tags=["authority"])
 
-# Keyset paging: every column in a sort runs the same direction, so a row comparison works and
-# the priority sort walks the incidents_priority_page_idx index. Resolved incidents come last.
+# Keyset paging: every column in a sort runs the same direction, so a row comparison works and the priority sort walks
+# the incidents_priority_page_idx index. Complaints that are no longer open come last.
 SORTS: dict[str, tuple[list[tuple[str, str]], str]] = {
-    "priority": ([("(i.status <> 'Resolved')", "boolean"), ("i.priority_score", "int"), ("i.id", "uuid")], "DESC"),
+    "priority": ([(open_sql("i"), "boolean"), ("i.priority_score", "int"), ("i.id", "uuid")], "DESC"),
     "newest": ([("i.created_at", "timestamptz"), ("i.id", "uuid")], "DESC"),
-    "oldest": ([("(i.status = 'Resolved')", "boolean"), ("i.created_at", "timestamptz"), ("i.id", "uuid")], "ASC"),
+    "oldest": ([(f"(NOT {open_sql('i')})", "boolean"), ("i.created_at", "timestamptz"), ("i.id", "uuid")], "ASC"),
     "affected": ([("i.affected_count", "int"), ("i.id", "uuid")], "DESC"),
+    "due": ([(f"(NOT {open_sql('i')})", "boolean"), ("i.due_at", "timestamptz"), ("i.id", "uuid")], "ASC"),
 }
 
 
 def _sort_values(sort: str, row) -> list:
     return {
-        "priority": [row.status != "Resolved", row.priority_score, str(row.id)],
+        "priority": [is_open(row.status), row.priority_score, str(row.id)],
         "newest": [row.created_at.isoformat(), str(row.id)],
-        "oldest": [row.status == "Resolved", row.created_at.isoformat(), str(row.id)],
+        "oldest": [not is_open(row.status), row.created_at.isoformat(), str(row.id)],
         "affected": [row.affected_count, str(row.id)],
+        "due": [not is_open(row.status), row.due_at.isoformat() if row.due_at else "infinity", str(row.id)],
     }[sort]
 
 
-def _filters(ward: str | None, category: str | None, status: str | None, q: str | None, hide_resolved: bool,
-             min_priority: int | None = None, flag: str | None = None) -> tuple[list[str], dict]:
+# The count chips at the top of the list. The list filter (view=...) and the counts in /authority/stats use THESE
+# predicates, so a chip's number always equals the list's `total` for the same filters.
+CHIPS: dict[str, str | None] = {
+    "all": None,
+    "new": "i.status IN ('Reported', 'Reopened')",
+    "acknowledged": "i.status = 'Acknowledged'",
+    "scheduled": "i.status = 'Scheduled'",
+    "in_progress": "i.status = 'In Progress'",
+    "resolved": "i.status = 'Resolved'",  # waiting for the citizen
+    "closed": "i.status = 'Closed'",
+    "overdue": f"({open_sql('i')} AND i.due_at < now())",
+    "unassigned": f"({open_sql('i')} AND i.assigned_to IS NULL)",
+}
+View = Literal["all", "new", "acknowledged", "scheduled", "in_progress", "resolved", "closed", "overdue", "unassigned"]
+RESPONSE_RISK = {"Emergency": "i.risk >= 12", "Urgent": "(i.risk >= 8 AND i.risk < 12)", "Routine": "(i.risk >= 4 AND i.risk < 8)", "Planned": "i.risk < 4"}
+
+
+def _base_filters(ward: str | None, category: str | None, q: str | None) -> tuple[list[str], dict]:
+    """Ward, category and search: shared by the list, the chip counts and the analytics endpoints."""
     where, params = [], {}
-    if min_priority is not None:  # quick filters: Critical = 65+, High = 48+
-        where.append("i.priority_score >= :minp")
-        params["minp"] = min_priority
-    if flag:
-        where.append(":flag = ANY(i.flags)")
-        params["flag"] = flag
     if ward:
         ward_id = ref.ward_id(ward)
         if ward_id is None:
@@ -54,18 +66,11 @@ def _filters(ward: str | None, category: str | None, status: str | None, q: str 
         cat = ref.category(category)
         if not cat:
             raise ApiError(422, "validation_error", "Unknown category.")
-        where.append("i.category_id = :cat")
-        params["cat"] = cat.id
-    if status:
-        if status not in STATUSES:
-            raise ApiError(422, "validation_error", "Unknown status.")
-        where.append("i.status = CAST(:status AS issue_status)")
-        params["status"] = status
-    if hide_resolved:
-        where.append("i.status <> 'Resolved'")
+        where.append("i.category_id = ANY(CAST(:cats AS smallint[]))")
+        params["cats"] = ref.merged_ids(cat.name)
     if q and q.strip():
-        # Report ID and address use the pg_trgm indexes (migration 0003); category and area names are
-        # matched here against the small reference lists, so the query stays index-friendly.
+        # Complaint no. and address use the pg_trgm indexes (migration 0003); category and area names are matched here
+        # against the small reference lists, so the query stays index-friendly.
         term = q.strip().lower()
         parts = ["i.public_id ILIKE :q", "i.address_text ILIKE :q"]
         params["q"] = "%" + term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
@@ -79,15 +84,35 @@ def _filters(ward: str | None, category: str | None, status: str | None, q: str 
     return where, params
 
 
+def _filters(ward: str | None, category: str | None, status: str | None, q: str | None, open_only: bool,
+             response: str | None = None, view: str = "all") -> tuple[list[str], dict]:
+    where, params = _base_filters(ward, category, q)
+    if status:
+        if status not in STATUSES:
+            raise ApiError(422, "validation_error", "Unknown status.")
+        where.append("i.status = CAST(:status AS issue_status)")
+        params["status"] = status
+    if open_only:
+        where.append(open_sql("i"))
+    if response:
+        if response not in RESPONSE_RISK:
+            raise ApiError(422, "validation_error", "Unknown response category.")
+        where.append(RESPONSE_RISK[response])
+    if view != "all":
+        where.append(CHIPS[view])
+    return where, params
+
+
 @router.get("/incidents")
 async def list_incidents(
     _: Authority, db: Db,
     ward: str | None = None, category: str | None = None, status: str | None = None, q: str | None = Query(None, max_length=100),
-    hide_resolved: bool = False, min_priority: int | None = Query(None, ge=0, le=100), flag: str | None = Query(None, max_length=40), sort: Literal["priority", "newest", "oldest", "affected"] = "priority",
+    open_only: bool = False, response: str | None = Query(None, max_length=12), view: View = "all",
+    sort: Literal["priority", "newest", "oldest", "affected", "due"] = "priority",
     cursor: str | None = None, limit: int = Query(50, ge=1, le=100),
 ):
     cols, direction = SORTS[sort]
-    where, params = _filters(ward, category, status, q, hide_resolved, min_priority, flag)
+    where, params = _filters(ward, category, status, q, open_only, response, view)
     after = paging.decode(cursor, len(cols))
     if after:
         op = "<" if direction == "DESC" else ">"
@@ -103,7 +128,8 @@ async def list_incidents(
     rows = rows[:limit]
     total = None
     if not cursor:  # the count is only needed once per filter set
-        total = await db.scalar(text(f"SELECT count(*) FROM incidents i {where_sql}"), params)
+        count_where, count_params = _filters(ward, category, status, q, open_only, response, view)
+        total = await db.scalar(text(f"SELECT count(*) FROM incidents i {('WHERE ' + ' AND '.join(count_where)) if count_where else ''}"), count_params)
     return {
         "items": [svc.authority_row(r) for r in rows],
         "next_cursor": paging.encode(_sort_values(sort, rows[-1])) if more and rows else None,
@@ -112,31 +138,50 @@ async def list_incidents(
 
 
 @router.get("/stats")
-async def stats(_: Authority, db: Db):
-    """Totals plus per-category and per-ward counts, in one query."""
-    row = (await db.execute(text("""
-        WITH s AS MATERIALIZED (SELECT category_id, ward_id, status, priority_score, created_at FROM incidents)
+async def stats(_: Authority, db: Db, ward: str | None = None, category: str | None = None, q: str | None = Query(None, max_length=100)):
+    """Totals, a count per status, overdue / unassigned / due today, per-category and per-ward counts, and `chips`:
+    the count behind each chip of the list, under the same ward / category / search filters as the list."""
+    row = (await db.execute(text(f"""
+        WITH s AS MATERIALIZED (SELECT category_id, ward_id, status, risk, created_at, due_at, assigned_to FROM incidents)
         SELECT
           (SELECT json_build_object(
-              'total', count(*), 'open', count(*) FILTER (WHERE status <> 'Resolved'),
-              'in_progress', count(*) FILTER (WHERE status = 'In Progress'),
-              'resolved', count(*) FILTER (WHERE status = 'Resolved'),
-              'critical_open', count(*) FILTER (WHERE status <> 'Resolved' AND priority_score >= 65),
-              'high_open', count(*) FILTER (WHERE status <> 'Resolved' AND priority_score >= 48 AND priority_score < 65),
+              'total', count(*), 'open', count(*) FILTER (WHERE ireport_is_open(status)),
+              'overdue', count(*) FILTER (WHERE ireport_is_open(status) AND due_at < now()),
+              'unassigned', count(*) FILTER (WHERE ireport_is_open(status) AND assigned_to IS NULL),
+              'due_today', count(*) FILTER (WHERE ireport_is_open(status) AND (due_at AT TIME ZONE 'Asia/Kolkata')::date = (now() AT TIME ZONE 'Asia/Kolkata')::date),
+              'emergency_open', count(*) FILTER (WHERE ireport_is_open(status) AND risk >= 12),
+              'urgent_open', count(*) FILTER (WHERE ireport_is_open(status) AND risk >= 8 AND risk < 12),
               'new_24h', count(*) FILTER (WHERE created_at > now() - interval '24 hours')) FROM s) AS totals,
+          (SELECT coalesce(json_object_agg(status, n), '{{}}') FROM (SELECT status::text AS status, count(*) AS n FROM s GROUP BY status) b) AS by_status,
           (SELECT coalesce(json_agg(json_build_object('id', category_id, 'total', total, 'open', open)), '[]') FROM
-              (SELECT category_id, count(*) AS total, count(*) FILTER (WHERE status <> 'Resolved') AS open FROM s GROUP BY category_id) x) AS per_category,
+              (SELECT category_id, count(*) AS total, count(*) FILTER (WHERE ireport_is_open(status)) AS open FROM s GROUP BY category_id) x) AS per_category,
           (SELECT coalesce(json_agg(json_build_object('id', ward_id, 'total', total, 'open', open)), '[]') FROM
-              (SELECT ward_id, count(*) AS total, count(*) FILTER (WHERE status <> 'Resolved') AS open FROM s GROUP BY ward_id) y) AS per_ward
+              (SELECT ward_id, count(*) AS total, count(*) FILTER (WHERE ireport_is_open(status)) AS open FROM s GROUP BY ward_id) y) AS per_ward
     """))).one()
     by_cat = {c["id"]: c for c in row.per_category}
     by_ward = {w["id"]: w for w in row.per_ward}
+
+    where, params = _base_filters(ward, category, q)
+    chip_cols = ", ".join(f"count(*) FILTER (WHERE {sql if sql else 'true'}) AS {name}" for name, sql in CHIPS.items())
+    chips = (await db.execute(text(f"SELECT {chip_cols} FROM incidents i {('WHERE ' + ' AND '.join(where)) if where else ''}"), params)).mappings().one()
     return {
         **row.totals,
+        "by_status": {s: row.by_status.get(s, 0) for s in STATUSES},
+        "chips": dict(chips),
         "per_category": [{"category": c.name, "total": by_cat.get(c.id, {}).get("total", 0), "open": by_cat.get(c.id, {}).get("open", 0)} for c in sorted(ref.categories.values(), key=lambda c: c.id)],
         "per_ward": [{"area": name, "total": by_ward.get(wid, {}).get("total", 0), "open": by_ward.get(wid, {}).get("open", 0)} for wid, name in sorted(ref.wards.items())]
         + ([{"area": None, **{k: by_ward[None][k] for k in ("total", "open")}}] if None in by_ward else []),
     }
+
+
+@router.get("/officers")
+async def officers(authority: Authority, db: Db):
+    """Approved officers who can be assigned a complaint."""
+    rows = (await db.execute(text("""
+        SELECT u.id, u.name, d.name AS department, w.name AS ward
+        FROM users u JOIN authority_profiles a ON a.user_id = u.id LEFT JOIN departments d ON d.id = a.department_id LEFT JOIN wards w ON w.id = u.ward_id
+        WHERE u.role = 'authority' AND a.approval = 'approved' AND u.deleted_at IS NULL ORDER BY u.name"""))).all()
+    return {"items": [{"id": r.id, "name": r.name, "department": r.department, "ward": r.ward, "is_me": r.id == authority.id} for r in rows]}
 
 
 @router.get("/hotspots")
@@ -146,36 +191,8 @@ async def hotspots(_: Authority, db: Db, limit: int = Query(5, ge=1, le=20)):
 
 
 async def build_detail(db, incident_id: uuid.UUID, viewer_id: uuid.UUID, include_phone: bool = False) -> dict:
-    """Full incident detail: priority reasons (computed on read), reporters' names, the message thread and
-    signed photo URLs. Shared by the authority and (read-only) admin routes. Phones only when requested."""
-    row = (await db.execute(text(f"""
-        WITH page AS (SELECT * FROM incidents WHERE id = :id)
-        {svc.ROW_SELECT.format(extra=", ST_Y(i.location::geometry) AS lat, ST_X(i.location::geometry) AS lng")}"""), {"id": incident_id})).first()
-    if not row:
-        raise not_found("Incident")
-    reporters = (await db.execute(text("""
-        SELECT r.id, u.name, u.phone, r.problem_type, r.description, r.created_at, r.user_corrected,
-               ac.name AS ai_category, r.ai_confidence, r.ai_source, r.ai_disagreement, r.nlp, r.citizen_message, r.location_source
-        FROM reports r JOIN users u ON u.id = r.user_id LEFT JOIN categories ac ON ac.id = r.ai_category_id
-        WHERE r.incident_id = :id ORDER BY r.created_at"""), {"id": incident_id})).all()
-    media = (await db.execute(text("""
-        SELECT m.storage_key, m.thumb_key, m.width, m.height FROM media m JOIN reports r ON r.id = m.report_id
-        WHERE r.incident_id = :id ORDER BY r.created_at, m.created_at"""), {"id": incident_id})).all()
-    storage = get_storage()
-    d = svc.authority_row(row)
-    d.update(
-        reporters=[{
-            "name": r.name, "phone": r.phone if include_phone else None, "problem_type": r.problem_type,
-            "description": r.description, "reported_at": r.created_at,
-            "ai_category": r.ai_category, "ai_confidence": r.ai_confidence, "user_corrected": r.user_corrected,
-            "ai_source": r.ai_source, "ai_disagreement": r.ai_disagreement, "nlp": r.nlp, "citizen_message": r.citizen_message,
-            "location_source": r.location_source,
-        } for r in reporters],
-        images=[{"url": storage.signed_url(m.storage_key), "thumb_url": storage.signed_url(m.thumb_key), "width": m.width, "height": m.height} for m in media],
-        history=(await svc.history(db, [incident_id]))[incident_id],
-        messages=(await svc.thread(db, [incident_id], viewer_id, as_authority=True))[incident_id],
-    )
-    return d
+    """The incident brief (see brief.py). Shared by the authority and (read-only) admin routes. Phones only when requested."""
+    return await build_brief(db, incident_id, viewer_id, include_phone)
 
 
 @router.get("/map")
@@ -195,20 +212,17 @@ async def incident_detail(incident_id: uuid.UUID, authority: Authority, db: Db, 
 
 @router.post("/incidents/{incident_id}/update")
 async def update_incident(incident_id: uuid.UUID, body: AuthorityUpdate, authority: Authority, db: Db):
-    if body.status is None and not (body.message or "").strip() and body.flags is None:
+    if not any([body.status, (body.message or "").strip(), body.flags is not None, body.assigned_to, body.scheduled_for]):
         raise ApiError(422, "validation_error", "Nothing to update.")
-    found = await svc.apply_update(db, authority.id, [incident_id], body.status, body.message, body.flags)
-    if not found:
-        raise not_found("Incident")
-    row = (await db.execute(text("SELECT status::text AS status, priority_score, flags, updated_at FROM incidents WHERE id = :i"), {"i": incident_id})).one()
+    result = await workflow.apply_officer_update(db, authority.id, incident_id, body)
     await db.commit()
-    return {"id": incident_id, "status": row.status, "priority_score": row.priority_score, "level": level_of(row.priority_score), "flags": list(row.flags), "updated_at": row.updated_at}
+    return result
 
 
 @router.post("/incidents/bulk")
 async def bulk_update(body: BulkUpdate, authority: Authority, db: Db):
-    if body.status is None and not (body.message or "").strip():
-        raise ApiError(422, "validation_error", "Choose a status or write a message.")
-    found = await svc.apply_update(db, authority.id, list(dict.fromkeys(body.ids)), body.status, body.message)
+    if not any([body.status, (body.message or "").strip(), body.assigned_to, body.scheduled_for]):
+        raise ApiError(422, "validation_error", "Choose an action: acknowledge, assign, schedule, resolve or message.")
+    result = await workflow.apply_bulk(db, authority.id, body)
     await db.commit()
-    return {"updated": len(found), "ids": found}
+    return result

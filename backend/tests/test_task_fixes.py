@@ -7,7 +7,7 @@ from PIL import Image
 from sqlalchemy import text
 
 from app.ai import pipeline, rules
-from conftest import admin_headers, make_authority, register_citizen
+from conftest import admin_headers, make_authority, register_citizen, resolve_complaint
 
 ANDHERI = (19.1364, 72.8296)  # profile area A
 COLABA = (18.9067, 72.8147)  # incident location B
@@ -108,7 +108,8 @@ async def test_two_reports_two_images_stay_linked(client):
     officer = await make_authority(client)
     d1 = (await client.get(f"/authority/incidents/{r1['incident_id']}", headers=officer["headers"])).json()
     lst = {i["id"]: i for i in (await client.get("/authority/incidents", headers=officer["headers"])).json()["items"]}
-    assert len(d1["images"]) == 1 and lst[r1["incident_id"]]["thumb_url"] == d1["images"][0]["thumb_url"]
+    photos = [p for e in d1["evidence"] for p in e["photos"]]
+    assert len(photos) == 1 and lst[r1["incident_id"]]["thumb_url"] == photos[0]["thumb_url"]
 
 
 # ---------- A3 / A4: AI honesty ----------
@@ -194,9 +195,9 @@ async def test_report_stores_ai_agreement_and_message_for_authority(client):
     assert created["department"] == "Roads & Traffic"
     row = (await client.get("/authority/incidents", headers=officer["headers"])).json()["items"][0]
     assert row["ai"]["agreement"] == "disagree" and row["ai"]["source"] == "image+text" and row["citizen_message"].startswith("Please come")
-    assert row["department"] == "Roads & Traffic" and row["nlp"]["duration"]["days"] == 4 and row["reasons"]
+    assert row["department"] == "Roads & Traffic" and row["nlp"]["duration"]["days"] == 4
     detail = (await client.get(f"/authority/incidents/{created['incident_id']}", headers=officer["headers"])).json()
-    assert detail["reporters"][0]["citizen_message"].startswith("Please come") and detail["reporters"][0]["nlp"]["flags"] == ["Near school"]
+    assert detail["evidence"][0]["citizen_message"].startswith("Please come") and detail["nlp"]["flags"] == ["Near school"]
 
 
 # ---------- B1: NLP ----------
@@ -263,9 +264,10 @@ async def test_hotspots_and_admin_overview(client):
     await client.post("/reports", json=body(COLABA[0] + 0.002, COLABA[1], category="Garbage"), headers=citizens[1]["headers"])
     await client.post("/reports", json=body(COLABA[0] + 0.004, COLABA[1], category="Garbage"), headers=citizens[3]["headers"])
     # one far away (not clustered) and one in Colaba that gets resolved (excluded)
-    await client.post("/reports", json=body(*ANDHERI, category="Electrical Hazard", description="live wire sparking"), headers=citizens[2]["headers"])
+    # live wire (impact 4) near a school on a main road: likelihood 3 -> risk 12 -> Emergency (a lone live wire would be 4 x 1 = Routine)
+    await client.post("/reports", json=body(*ANDHERI, category="Electrical Hazard", description="live wire sparking", flags=["Near school", "Main road"]), headers=citizens[2]["headers"])
     done = (await client.post("/reports", json=body(COLABA[0] + 0.003, COLABA[1] + 0.002, category="Streetlight"), headers=citizens[4]["headers"])).json()
-    await client.post(f"/authority/incidents/{done['incident_id']}/update", json={"status": "Resolved"}, headers=officer["headers"])
+    assert (await resolve_complaint(client, officer, done["incident_id"])).status_code == 200
     hs = (await client.get("/authority/hotspots", headers=officer["headers"])).json()["items"]
     assert len(hs) == 1
     h = hs[0]
@@ -316,7 +318,7 @@ async def test_map_data_areas_and_dbscan_clusters(client):
     admin = await admin_headers(client)
     assert len((await client.get("/admin/map", headers=admin)).json()["incidents"]) == 3
     d = (await client.get(f"/admin/incidents/{m['incidents'][0]['id']}", headers=admin)).json()
-    assert d["lat"] and all(r["phone"] is None for r in d["reporters"])
+    assert d["lat"] and d["evidence"] and all(r["phone"] is None for r in d["evidence"])
     assert (await client.get("/admin/map", headers=officer["headers"])).status_code == 403
     assert (await client.get("/authority/map", headers=admin)).status_code == 403
 
@@ -365,7 +367,7 @@ async def test_me_summary_counts_and_level(client):
     assert s1["reports_submitted"] == 1 and s1["confirmations_received"] == 1 and s1["incidents_resolved"] == 0 and s1["level"] is None
     # the confirming neighbour did not start the incident, so receives nothing
     assert (await client.get("/me/summary", headers=b["headers"])).json()["confirmations_received"] == 0
-    await client.post(f"/authority/incidents/{iid}/update", json={"status": "Resolved"}, headers=officer["headers"])
+    assert (await resolve_complaint(client, officer, iid)).status_code == 200
     s2 = (await client.get("/me/summary", headers=a["headers"])).json()
     assert s2["incidents_resolved"] == 1 and s2["level"] == "contributor"
     assert (await client.get("/me/summary")).status_code == 401

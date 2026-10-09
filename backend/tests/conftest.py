@@ -89,6 +89,11 @@ async def register_citizen(client: httpx.AsyncClient, email: str | None = None, 
     return data
 
 
+async def resolve_complaint(client: httpx.AsyncClient, officer: dict, incident_id: str, **extra) -> httpx.Response:
+    """Marks a complaint Resolved: one click for the officer (DECISIONS.md #79)."""
+    return await client.post(f"/authority/incidents/{incident_id}/update", json={"status": "Resolved", **extra}, headers=officer["headers"])
+
+
 async def admin_headers(client: httpx.AsyncClient) -> dict[str, str]:
     r = await client.post("/auth/login", json={"email": "admin@example.com", "password": "admin-pass-123", "role": "admin"})
     assert r.status_code == 200, r.text

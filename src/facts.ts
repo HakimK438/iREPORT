@@ -1,31 +1,37 @@
-/* Plain decision helpers for the control room: how long a problem has waited, whether it is past its target, and what to do next.
-   Everything here is a fixed rule over fields the API already returns; nothing is predicted. */
-import type { StrKey } from "./i18n";
+/* Small decision helpers for the control room. The urgency itself (response category, due date, overdue) is computed by the
+   server from risk = impact x likelihood; nothing about urgency is computed or guessed here. */
+import { isOpen, type ResponseCat } from "./store";
 
-/** Target days to first visit by priority level (also explained to the officer in the on-screen glossary). */
-export const SLA_DAYS: Record<string, number> = { Critical: 1, High: 3, Medium: 7, Low: 14 };
+/** The one primary action on a complaint, by status (and whether someone is assigned). */
+export type NextAction = "acknowledge" | "assign" | "schedule" | "start" | "resume" | "resolve" | null;
 
-export const daysSince = (iso: string): number => Math.max(0, (Date.now() - Date.parse(iso)) / 86_400_000);
-
-export interface Wait { days: number; target: number; overdueBy: number; closed: boolean }
-
-export function waitOf(createdAt: string, level: string, status: string): Wait {
-  const days = daysSince(createdAt), target = SLA_DAYS[level] ?? 14, closed = status === "Resolved";
-  return { days, target, overdueBy: closed ? 0 : Math.max(0, Math.floor(days - target)), closed };
+export function nextAction(r: { status: string; assignee: unknown }): NextAction {
+  switch (r.status) {
+    case "Reported": return "acknowledge";
+    case "Acknowledged": return r.assignee ? "schedule" : "assign";
+    case "Reopened": return r.assignee ? "start" : "assign";
+    case "Scheduled": return "start";
+    case "In Progress": return "resolve";
+    case "On Hold": return "resume";
+    default: return null; // Resolved: waiting for the citizen; Closed / Rejected / Duplicate / Transferred: nothing left to do
+  }
 }
 
-/** The one-line recommended next step, as a translation key. */
-export function actionKey(level: string, status: string): StrKey {
-  if (status === "Resolved") return "s_act_done";
-  if (status === "Reported") return level === "Critical" || level === "High" ? (`s_act_${level}` as StrKey) : "s_act_review";
-  if (status === "In Progress") return "s_act_progress";
-  return `s_act_${level}` as StrKey;
-}
-
-/** Red for overdue or critical, amber for high or close to the target, green otherwise. */
-export function tone(level: string, w: Wait): "red" | "amber" | "green" {
-  if (w.closed) return "green";
-  if (w.overdueBy > 0 || level === "Critical") return "red";
-  if (level === "High" || w.days >= w.target * 0.7) return "amber";
+/** Colour of a card: red for Emergency or overdue, amber for Urgent, green otherwise. Colour is never the only signal (the chip has the word). */
+export function tone(r: { status: string; response: ResponseCat; overdue: boolean }): "red" | "amber" | "green" {
+  if (!isOpen(r.status)) return "green";
+  if (r.overdue || r.response === "Emergency") return "red";
+  if (r.response === "Urgent") return "amber";
   return "green";
 }
+
+export const LOCALE = { en: "en-IN", hi: "hi-IN", mr: "mr-IN" } as const;
+
+/** "12 Oct" in the officer's language. */
+export const shortDate = (iso: string, lang: keyof typeof LOCALE): string => new Date(iso).toLocaleDateString(LOCALE[lang], { day: "numeric", month: "short" });
+
+/** Google Maps directions to the complaint (opened by the officer's own click; the app itself calls no map service). */
+export const navigateUrl = (lat: number, lng: number): string => `https://www.google.com/maps/dir/?api=1&destination=${lat.toFixed(6)},${lng.toFixed(6)}`;
+
+/** URL-safe name of a locality, the file name of its photo in public/areas/. */
+export const areaSlug = (area: string): string => area.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");

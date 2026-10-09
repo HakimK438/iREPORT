@@ -10,7 +10,9 @@ from ..deps import Citizen, Db, OptionalUser
 from ..errors import ApiError, not_found
 from ..models import STATUSES
 from ..refdata import ref
-from ..schemas import MessageIn
+from ..schemas import CitizenReopen, MessageIn
+from ..status import is_open
+from .. import workflow
 
 router = APIRouter(tags=["community"])
 
@@ -65,7 +67,7 @@ async def nearby(
           ORDER BY {order} LIMIT :n OFFSET :off)
         {svc.ROW_SELECT.format(extra=''', i.distance_m,
                EXISTS (SELECT 1 FROM confirmations f WHERE f.incident_id = i.id AND f.user_id = :v) AS confirmed_by_me,
-               EXISTS (SELECT 1 FROM reports r WHERE r.incident_id = i.id AND r.user_id = :v) AS reported_by_me''')}
+               EXISTS (SELECT 1 FROM reports r WHERE r.incident_id = i.id AND r.user_id = :v AND r.duplicate_of_report_id IS NULL) AS reported_by_me''')}
         ORDER BY {_outer(order)}"""), params)).all()
     more = len(rows) > limit
     items = []
@@ -82,7 +84,7 @@ async def incident_detail(incident_id: uuid.UUID, db: Db, viewer: OptionalUser):
         WITH page AS (SELECT * FROM incidents WHERE id = :id)
         {svc.ROW_SELECT.format(extra=''', ST_Y(i.location::geometry) AS lat, ST_X(i.location::geometry) AS lng,
                EXISTS (SELECT 1 FROM confirmations f WHERE f.incident_id = i.id AND f.user_id = :v) AS confirmed_by_me,
-               EXISTS (SELECT 1 FROM reports r WHERE r.incident_id = i.id AND r.user_id = :v) AS reported_by_me''')}"""),
+               EXISTS (SELECT 1 FROM reports r WHERE r.incident_id = i.id AND r.user_id = :v AND r.duplicate_of_report_id IS NULL) AS reported_by_me''')}"""),
         {"id": incident_id, "v": viewer.id if viewer else None})).first()
     if not row:
         raise not_found("Incident")
@@ -102,14 +104,14 @@ async def _change_affected(db: Db, incident_id: uuid.UUID, delta: int) -> int:
 async def confirm(incident_id: uuid.UUID, citizen: Citizen, db: Db):
     row = (await db.execute(text("""
         SELECT status::text AS status, affected_count,
-               EXISTS (SELECT 1 FROM reports r WHERE r.incident_id = i.id AND r.user_id = :u) AS reported
+               EXISTS (SELECT 1 FROM reports r WHERE r.incident_id = i.id AND r.user_id = :u AND r.duplicate_of_report_id IS NULL) AS reported
         FROM incidents i WHERE id = :i FOR UPDATE"""), {"i": incident_id, "u": citizen.id})).first()
     if not row:
         raise not_found("Incident")
     if row.reported:  # a reporter is already counted
         return {"confirmed": True, "affected_count": row.affected_count}
-    if row.status == "Resolved":
-        raise ApiError(409, "already_resolved", "This problem has already been resolved.")
+    if not is_open(row.status):
+        raise ApiError(409, "already_resolved", "This problem is no longer open.")
     inserted = await db.scalar(text("INSERT INTO confirmations (incident_id, user_id) VALUES (:i, :u) ON CONFLICT DO NOTHING RETURNING true"), {"i": incident_id, "u": citizen.id})
     count = await _change_affected(db, incident_id, 1) if inserted else row.affected_count
     await db.commit()
@@ -127,10 +129,26 @@ async def unconfirm(incident_id: uuid.UUID, citizen: Citizen, db: Db):
     return {"confirmed": False, "affected_count": count}
 
 
+@router.post("/incidents/{incident_id}/resolution/confirm")
+async def confirm_fixed(incident_id: uuid.UUID, citizen: Citizen, db: Db):
+    """The reporter confirms the work is done: Resolved -> Closed."""
+    result = await workflow.citizen_resolution(db, citizen.id, incident_id, confirm=True)
+    await db.commit()
+    return result
+
+
+@router.post("/incidents/{incident_id}/resolution/reopen")
+async def reopen(incident_id: uuid.UUID, body: CitizenReopen, citizen: Citizen, db: Db):
+    """The reporter says the work is not done: Resolved -> Reopened with a reason (the SLA clock keeps running)."""
+    result = await workflow.citizen_resolution(db, citizen.id, incident_id, confirm=False, reason=body.reason)
+    await db.commit()
+    return result
+
+
 @router.post("/incidents/{incident_id}/messages", status_code=201)
 async def reply(incident_id: uuid.UUID, body: MessageIn, citizen: Citizen, db: Db):
     """A citizen reply to the authority. Only reporters of the incident can write."""
-    reported = await db.scalar(text("SELECT EXISTS (SELECT 1 FROM reports WHERE incident_id = :i AND user_id = :u)"), {"i": incident_id, "u": citizen.id})
+    reported = await db.scalar(text("SELECT EXISTS (SELECT 1 FROM reports WHERE incident_id = :i AND user_id = :u AND duplicate_of_report_id IS NULL)"), {"i": incident_id, "u": citizen.id})
     if not reported:
         raise not_found("Report")
     row = (await db.execute(text("INSERT INTO messages (incident_id, sender_id, body) VALUES (:i, :u, :b) RETURNING id, created_at"), {"i": incident_id, "u": citizen.id, "b": body.body})).first()

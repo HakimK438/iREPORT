@@ -46,7 +46,7 @@ export default function AdminPanel({ lang = "en" }: { lang?: Lang }) {
         <h3 className="ad-h">{tr(lang, "adm_concentration")}</h3>
         <p className="muted-line">{tr(lang, "adm_reco")}</p>
         <ul className="plain cat-list">{overview.data.categories.length === 0 && <li>{tr(lang, "a_noOpen")}</li>}{overview.data.categories.map(c => <li key={c.category}><CategoryPhoto category={c.category} className="cat-photo sm" label={false} /><span><b>{c.share_pct}%</b> {catLabel(lang, c.category)} ({c.open}) · {catLabel(lang, c.category)} → {deptLabel(lang, c.recommended_department)}</span></li>)}</ul>
-        <h3 className="ad-h">{tr(lang, "adm_topHot")} <em className="src-tag src-gis">{tr(lang, "tagGis")}</em></h3>
+        <h3 className="ad-h">{tr(lang, "adm_topHot")}</h3>
         <div className="hot-grid">{overview.data.hotspots.map(h => <div className="hot-card" key={h.area}><div className="hot-top"><b>{h.area}</b><span className="hot-score">{h.impact_score}</span></div><p>{h.open_incidents} {tr(lang, "a_openWord")} · {h.critical} {tr(lang, "a_critWord")} · {h.unique_citizens} {tr(lang, "s_citizens")}</p><p className="hot-cats">{h.categories.map(c => <span key={c.category} className="hot-cat"><CategoryPhoto category={c.category} className="cat-dot" label={false} />{catLabel(lang, c.category)} ×{c.count}</span>)}</p><p className="hot-why muted-line">{tr(lang, "s_impact")} {h.impact_score}/100 {tr(lang, "s_because")}: {hotspotReasons(h, lang).join(" · ")}</p></div>)}{overview.data.hotspots.length === 0 && <p className="muted-line">{tr(lang, "a_noHot")}</p>}</div>
       </>}
     </section>

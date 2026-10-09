@@ -1,6 +1,6 @@
 from sqlalchemy import text
 
-from conftest import make_authority, register_citizen
+from conftest import make_authority, register_citizen, resolve_complaint
 
 LINK_ROAD = (19.1364, 72.8296)
 
@@ -43,9 +43,9 @@ async def test_neighbours_reports_merge_within_50m(client):
     diff_cat = (await client.post("/reports", json=report(category="Garbage"), headers=other["headers"])).json()
     assert diff_cat["merged"] is False
 
-    # the same citizen reporting again is not counted twice
-    again = (await client.post("/reports", json=report(), headers=a["headers"])).json()
-    assert again["merged"] is True and again["affected_count"] == 2
+    # the same citizen reporting again is refused before anything is inserted (authority-v2, see test_duplicates.py)
+    again = await client.post("/reports", json=report(), headers=a["headers"])
+    assert again.status_code == 409 and again.json()["error"]["code"] == "already_reported"
 
 
 async def test_no_merge_into_resolved_or_old_incidents(client):
@@ -54,7 +54,7 @@ async def test_no_merge_into_resolved_or_old_incidents(client):
     officer = await make_authority(client)
     a, b, c = [await register_citizen(client) for _ in range(3)]
     first = (await client.post("/reports", json=report(), headers=a["headers"])).json()
-    await client.post(f"/authority/incidents/{first['incident_id']}/update", json={"status": "Resolved"}, headers=officer["headers"])
+    assert (await resolve_complaint(client, officer, first["incident_id"])).status_code == 200
     second = (await client.post("/reports", json=report(), headers=b["headers"])).json()
     assert second["merged"] is False
 
@@ -109,7 +109,7 @@ async def test_messages_reply_and_unread(client):
     detail = (await client.get(f"/authority/incidents/{iid}", headers=officer["headers"])).json()
     assert [m["from"] for m in detail["messages"]] == ["authority", "citizen"]
     assert detail["messages"][1]["by"] == "Neha Joshi"
-    assert detail["reporters"][0]["name"] == "Neha Joshi" and detail["reporters"][0]["phone"] is None
+    assert detail["evidence"][0]["reporter"] == "Neha Joshi" and detail["evidence"][0]["phone"] is None
 
 
 async def test_community_feed_is_public_and_confirm_counts(client):
@@ -135,7 +135,7 @@ async def test_community_feed_is_public_and_confirm_counts(client):
     # filters
     empty = (await client.get("/incidents/nearby", params={"lat": LINK_ROAD[0], "lng": LINK_ROAD[1], "category": "Garbage"})).json()
     assert empty["items"] == []
-    st = (await client.get("/incidents/nearby", params={"lat": LINK_ROAD[0], "lng": LINK_ROAD[1], "status": "Reported,Under Review"})).json()
+    st = (await client.get("/incidents/nearby", params={"lat": LINK_ROAD[0], "lng": LINK_ROAD[1], "status": "Reported,Acknowledged"})).json()
     assert len(st["items"]) == 1
     assert (await client.get(f"/incidents/{iid}")).json()["public_id"].startswith("IR-")
 
@@ -157,7 +157,8 @@ async def test_authority_list_sort_filter_page_and_stats(client):
     ids = [i["id"] for i in page["items"]]
     assert ids[0] == danger["incident_id"] and ids.index(danger["incident_id"]) < ids.index(safe["incident_id"])
     top = page["items"][0]
-    assert top["affected_count"] == 2 and top["level"] == "Critical" and "Live wiring" in top["flags"]
+    # live wire (impact 4) x [near a school (citizen says)] = likelihood 2 -> risk 8 -> Urgent, due in 3 days
+    assert top["affected_count"] == 2 and top["response"] == "Urgent" and top["risk"] == 8 and "Live wiring" in top["flags"]
     safe_row = next(i for i in page["items"] if i["id"] == safe["incident_id"])
     assert safe_row["affected_count"] == 30
 
@@ -172,13 +173,13 @@ async def test_authority_list_sort_filter_page_and_stats(client):
     assert seen == ids
 
     # resolved go last
-    await client.post(f"/authority/incidents/{danger['incident_id']}/update", json={"status": "Resolved"}, headers=officer["headers"])
+    assert (await resolve_complaint(client, officer, danger["incident_id"])).status_code == 200
     ids2 = [i["id"] for i in (await client.get("/authority/incidents", headers=officer["headers"])).json()["items"]]
     assert ids2[-1] == danger["incident_id"]
 
     f = (await client.get("/authority/incidents", params={"category": "Streetlight", "ward": "Colaba"}, headers=officer["headers"])).json()
     assert f["total"] == 5
-    f = (await client.get("/authority/incidents", params={"hide_resolved": True}, headers=officer["headers"])).json()
+    f = (await client.get("/authority/incidents", params={"open_only": True}, headers=officer["headers"])).json()
     assert f["total"] == 6
     f = (await client.get("/authority/incidents", params={"q": "garbage"}, headers=officer["headers"])).json()
     assert [i["id"] for i in f["items"]] == [safe["incident_id"]]
@@ -190,15 +191,15 @@ async def test_authority_list_sort_filter_page_and_stats(client):
     assert (await client.get("/authority/incidents", params={"sort": "affected"}, headers=officer["headers"])).json()["items"][0]["id"] == safe["incident_id"]
 
     s = (await client.get("/authority/stats", headers=officer["headers"])).json()
-    assert (s["total"], s["open"], s["resolved"], s["in_progress"]) == (7, 6, 1, 0)
+    assert (s["total"], s["open"], s["by_status"]["Resolved"], s["by_status"]["In Progress"]) == (7, 6, 1, 0)
     assert next(c for c in s["per_category"] if c["category"] == "Streetlight") == {"category": "Streetlight", "total": 5, "open": 5}
     # 0006 added more areas: the garbage point (19.20, 72.85) is now nearest Kandivali, the electrical pair stays in Malad
     assert next(w for w in s["per_ward"] if w["area"] == "Malad")["total"] == 1
     assert next(w for w in s["per_ward"] if w["area"] == "Kandivali")["total"] == 1
 
     detail = (await client.get(f"/authority/incidents/{danger['incident_id']}", headers=officer["headers"])).json()
-    assert detail["reasons"][0]["label"] == "Critical severity" and len(detail["reporters"]) == 2
-    assert [h["status"] for h in detail["history"]] == ["Reported", "Resolved"]
+    assert detail["reasons"][0]["code"] == "impact_4" and detail["reasons"][0]["source"] == "category" and len(detail["evidence"]) == 2
+    assert [h["status"] for h in detail["timeline"]] == ["Reported", "Resolved"]
 
 
 async def test_bulk_update_one_transaction(client):
@@ -207,16 +208,18 @@ async def test_bulk_update_one_transaction(client):
     officer = await make_authority(client)
     c = await register_citizen(client)
     ids = [(await client.post("/reports", json=report(19.0 + k * 0.01, 72.8), headers=c["headers"])).json()["incident_id"] for k in range(3)]
-    r = await client.post("/authority/incidents/bulk", json={"ids": ids, "status": "In Progress", "message": "Crew assigned to all"}, headers=officer["headers"])
+    r = await client.post("/authority/incidents/bulk", json={"ids": ids, "status": "Acknowledged", "message": "Crew assigned to all"}, headers=officer["headers"])
     assert r.json()["updated"] == 3
     async with engine.connect() as conn:
-        events = await conn.scalar(text("SELECT count(*) FROM status_events WHERE to_status = 'In Progress' AND actor_id IS NOT NULL"))
+        events = await conn.scalar(text("SELECT count(*) FROM status_events WHERE to_status = 'Acknowledged' AND actor_id IS NOT NULL"))
         msgs = await conn.scalar(text("SELECT count(*) FROM messages"))
     assert (events, msgs) == (3, 3)
     # unchanged status does not write another event
-    await client.post("/authority/incidents/bulk", json={"ids": ids, "status": "In Progress"}, headers=officer["headers"])
+    await client.post("/authority/incidents/bulk", json={"ids": ids, "status": "Acknowledged"}, headers=officer["headers"])
     async with engine.connect() as conn:
-        assert await conn.scalar(text("SELECT count(*) FROM status_events WHERE to_status = 'In Progress'")) == 3
+        assert await conn.scalar(text("SELECT count(*) FROM status_events WHERE to_status = 'Acknowledged'")) == 3
+    # bulk can resolve (one click, DECISIONS.md #79)
+    assert (await client.post("/authority/incidents/bulk", json={"ids": ids, "status": "Resolved"}, headers=officer["headers"])).json()["updated"] == 3
     assert (await client.post("/authority/incidents/bulk", json={"ids": ids}, headers=officer["headers"])).status_code == 422
     assert (await client.post("/authority/incidents/bulk", json={"ids": ids, "status": "Resolved"}, headers=c["headers"])).status_code == 403
     assert (await client.post("/authority/incidents/bulk", json={"ids": ["00000000-0000-4000-8000-000000000000"] * 101, "status": "Resolved"}, headers=officer["headers"])).status_code == 422

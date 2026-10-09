@@ -1,46 +1,41 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "./Icon";
-import { ago, type Status } from "./store";
-import { api, type AiSummary } from "./api";
+import { CATEGORY_NAMES, isOpen, type ResponseCat, type Status } from "./store";
+import { api, ApiError, type Brief, type Reason } from "./api";
 import { CategoryPhoto } from "./brand";
-import { severityName, statusName, tr, type Lang } from "./i18n";
-import { catLabel, deptLabel, durationLabel, flagLabel, hazardLabel, obstructionLabel, reasonLabel } from "./i18nStaff";
-import { actionKey, tone, waitOf } from "./facts";
+import { tr, trf, type Lang, type StrKey } from "./i18n";
+import { catLabel, deptLabel } from "./i18nStaff";
+import { areaSlug, LOCALE, navigateUrl, nextAction, shortDate, tone, type NextAction } from "./facts";
 
-/** The few incident fields the detail view needs, so the list row and the map card can both open it. */
-export interface DetailIssue { id: string; public_id: string; severity: string; status: Status; priority_score: number; thumb_url: string | null }
-export interface ClusterInfo { name: string; size: number; eps_m: number }
+/* The incident brief: one complaint read top to bottom like a work order. Each fact appears once.
+   Header, what, why urgent, where, evidence, history at this spot, nearby open work, timeline, messages, next action. */
 
-/** Unique names, at most three, then "+N". Many reports on one problem must not flood the header. */
-const names = (all: string[]): string => { const u = [...new Set(all)]; return u.length === 0 ? "—" : u.length <= 3 ? u.join(", ") : `${u.slice(0, 3).join(", ")} +${u.length - 3}`; };
+const BASE = import.meta.env.BASE_URL;
 
-const SOURCE_KEY = { image: "s_srcPhoto", text: "s_srcText", "image+text": "s_srcBoth" } as const;
-
-/** Where a fact came from, in words an officer understands. The hover text says how it was produced. */
 export const Tag = ({ kind, lang = "en" }: { kind: "ml" | "rule" | "gis" | "you"; lang?: Lang }) => {
   const key = kind === "ml" ? "tagMl" : kind === "rule" ? "tagRule" : kind === "gis" ? "tagGis" : "tagYou";
   return <em className={`src-tag src-${kind}`}>{tr(lang, key)}</em>;
 };
 
-export function AiChip({ ai, lang = "en" }: { ai: AiSummary; lang?: Lang }) {
-  if (!ai.category) return <span className="chip muted">{tr(lang, "s_noAi")}</span>;
-  const pct = ai.confidence != null ? `${Math.round(ai.confidence * 100)}% ${tr(lang, "s_sure")}` : "";
-  const src = ai.source && ai.source in SOURCE_KEY ? tr(lang, SOURCE_KEY[ai.source as keyof typeof SOURCE_KEY]) : "";
-  return <span className={`chip${ai.agreement === "disagree" ? " warn" : ""}`} title={tr(lang, "s_g_auto")}>
-    {tr(lang, "s_looksLike")}: {catLabel(lang, ai.category)}{pct ? ` · ${pct}` : ""}{src ? ` · ${src}` : ""}
-    {ai.agreement === "agree" ? ` · ${tr(lang, "s_agree")}` : ""}{ai.agreement === "disagree" ? ` · ${tr(lang, "s_disagree")}` : ""}{ai.user_corrected ? ` · ${tr(lang, "s_changedCat")}` : ""}</span>;
-}
+/** Status in the officer's words (the citizen app words it differently). */
+export const staffStatus = (lang: Lang, s: string): string => { const k = `ss_${s.replace(" ", "")}` as StrKey; return tr(lang, k); };
+export const StatusPill = ({ status, lang }: { status: string; lang: Lang }) => <span className={`pill st-${status.toLowerCase().replace(" ", "-")}`}>{staffStatus(lang, status)}</span>;
+/** The four hazard categories. They come straight from the stored risk (impact x likelihood), never from a typed-in number: CRITICAL 12+, HIGH RISK 8-11,
+    MODERATE RISK 4-7, ROUTINE below 4. Icon, colour and word say the same thing, so colour is never the only signal. */
+const SEV_IMG: Record<ResponseCat, string> = { Emergency: "critical.png", Urgent: "high_risk.png", Routine: "moderate_risk.png", Planned: "daily_routine.png" };
+const SevImg = ({ response, size }: { response: ResponseCat; size: number }) => <img className="sev-img" src={`${BASE}symbols/${SEV_IMG[response]}`} alt="" width={size} height={size} loading="lazy" />;
+export const ResponseChip = ({ response, lang }: { response: ResponseCat; lang: Lang }) => <span className={`resp resp-${response.toLowerCase()}`} title={tr(lang, `resp_${response}_tip` as StrKey)}><SevImg response={response} size={24} />{tr(lang, `resp_${response}` as StrKey)}</span>;
 
-export function mapSrc(lat: number, lng: number) {
-  return `https://www.openstreetmap.org/export/embed.html?bbox=${(lng - 0.004).toFixed(4)}%2C${(lat - 0.003).toFixed(4)}%2C${(lng + 0.004).toFixed(4)}%2C${(lat + 0.003).toFixed(4)}&layer=mapnik&marker=${lat.toFixed(5)}%2C${lng.toFixed(5)}`;
-}
-
-/** "Open for 3 days" / "Overdue by 2 days" in words, shared by the list cards and the detail. */
-export function waitText(lang: Lang, days: number): string {
-  if (days < 1) return tr(lang, "s_today");
-  const n = Math.floor(days);
-  return `${n} ${tr(lang, n === 1 ? "s_day" : "s_days")}`;
+/** "Due 12 Oct" or "Overdue 2 days" (red). Nothing for a complaint that is no longer open, except Resolved: awaiting the citizen. */
+export function DueText({ row, lang }: { row: { status: string; due_at: string | null; overdue: boolean; overdue_days: number }; lang: Lang }) {
+  if (row.status === "Resolved") return <span className="due">{tr(lang, "v_awaiting")}</span>;
+  if (!isOpen(row.status) || !row.due_at) return null;
+  if (row.overdue) {
+    const n = row.overdue_days;
+    return <span className="due red">{n < 1 ? tr(lang, "v_overdueToday") : trf(lang, "v_overdueBy", { n, unit: tr(lang, n === 1 ? "s_day" : "s_days") })}</span>;
+  }
+  return <span className="due">{trf(lang, "v_due", { date: shortDate(row.due_at, lang) })}</span>;
 }
 
 /** A photo from the citizen when there is one, otherwise the picture of the category, so a card is never blank. */
@@ -50,62 +45,229 @@ export function Evidence({ url, category, alt, className }: { url: string | null
   return <CategoryPhoto category={category} className={`cat-photo ${className ?? ""}`} />;
 }
 
-export function Detail({ issue, reply, setReply, act, acting, readOnly = false, cluster = null, lang = "en" }: { issue: DetailIssue; reply: string; setReply: (v: string) => void; act: (id: string, next: Status | null) => void; acting: boolean; readOnly?: boolean; cluster?: ClusterInfo | null; lang?: Lang }) {
-  // Photo links are signed for 15 minutes, so refresh the open detail every 10 minutes.
-  const detail = useQuery({ queryKey: [readOnly ? "admin" : "authority", "incident", issue.id], queryFn: () => (readOnly ? api.adminIncident(issue.id) : api.authorityDetail(issue.id)), refetchInterval: 10 * 60_000 });
-  const d = detail.data;
-  const [photo, setPhoto] = useState(0);
-  const w = d ? waitOf(d.created_at, d.level, d.status) : null;
-  const t = d && w ? tone(d.level, w) : "green";
-  const main = d?.images[photo]?.url ?? issue.thumb_url;
-  return <div className="ad-detail">
-    <div className="ad-detail-media">
-      <Evidence url={main} category={d?.category ?? "Other"} alt={tr(lang, "s_evidence")} />
-      {d && d.images.length > 1 && <div className="ad-thumbs">{d.images.map((m, k) => <button key={k} className={k === photo ? "on" : ""} onClick={() => setPhoto(k)} aria-label={`${tr(lang, "s_evidence")} ${k + 1}`}><img src={m.thumb_url} alt="" loading="lazy" /></button>)}</div>}
-      {d && d.images.length === 0 && !issue.thumb_url && <small>{tr(lang, "s_noPhoto")}</small>}
-    </div>
-    <div className="ad-detail-body">
-      {d?.sample_confidence != null && <p className="sample-badge">{tr(lang, "s_exampleNote")} {tr(lang, "exampleConf")} {Math.round(d.sample_confidence * 100)}%.</p>}
-      <small>{issue.public_id} · {d ? `${tr(lang, "s_reportedBy")} ${names(d.reporters.map(r => r.name))}` : tr(lang, "s_loadingReporters")} · {severityName(lang, issue.severity)} {tr(lang, "s_severity")}</small>
+export function mapSrc(lat: number, lng: number) {
+  return `https://www.openstreetmap.org/export/embed.html?bbox=${(lng - 0.004).toFixed(4)}%2C${(lat - 0.003).toFixed(4)}%2C${(lng + 0.004).toFixed(4)}%2C${(lat + 0.003).toFixed(4)}&layer=mapnik&marker=${lat.toFixed(5)}%2C${lng.toFixed(5)}`;
+}
 
-      {d && w && <>
-        <h3>{tr(lang, "s_atGlance")}</h3>
-        <div className="glance">
-          <div className={`gl-${t}`}><small>{tr(lang, "s_priority")}</small><b>{d.priority_score}/100</b><span>{severityName(lang, d.level)}</span></div>
-          <div className={w.overdueBy > 0 ? "gl-red" : ""}><small>{tr(lang, "s_openFor")}</small><b>{waitText(lang, w.days)}</b><span>{w.closed ? tr(lang, "s_closed") : w.overdueBy > 0 ? `${tr(lang, "s_overdueBy")} ${waitText(lang, w.overdueBy)}` : `${tr(lang, "s_target")}: ${waitText(lang, w.target)}`}</span></div>
-          <div><small>{tr(lang, "s_people")}</small><b>{d.affected_count}</b><span>{d.reporters.length} {tr(lang, d.reporters.length === 1 ? "s_citizen" : "s_citizens")}</span></div>
-          <div><small>{tr(lang, "s_dept")}</small><b className="small-b">{deptLabel(lang, d.department)}</b><span>{d.area ?? tr(lang, "s_noArea")}</span></div>
-        </div>
-        {d.flags.length > 0 && <p className="ad-flags">{d.flags.map(f => <em key={f}>{flagLabel(lang, f)}</em>)}</p>}
-        <div className={`next-step gl-${t}`}><Icon name="shield" size={18} /><span><small>{tr(lang, "s_action")}</small><b>{tr(lang, actionKey(d.level, d.status))}</b></span></div>
-      </>}
+/** Wording of one "why urgent" reason; the source is shown next to it ("checked on map" / "citizen says" / ...). */
+export function reasonText(lang: Lang, r: Reason): string {
+  const p = r.params;
+  switch (r.code) {
+    case "impact_4": return trf(lang, "v_r_life", { category: catLabel(lang, p.category ?? "") });
+    case "impact_3": return trf(lang, "v_r_injury", { category: catLabel(lang, p.category ?? "") });
+    case "severity_raise": return tr(lang, "v_r_dangerous");
+    case "main_road": return p.name ? trf(lang, "v_r_roadNamed", { name: p.name }) : tr(lang, "v_r_road");
+    case "near_sensitive": {
+      const kind = tr(lang, p.kind === "hospital" ? "v_kind_hospital" : "v_kind_school");
+      if (p.distance_m != null) return trf(lang, "v_r_nearPlace", { m: p.distance_m, place: p.name ?? kind });
+      return trf(lang, "v_r_nearKind", { kind });
+    }
+    case "many_citizens": return trf(lang, "v_r_citizens", { n: p.n ?? 0 });
+    case "monsoon": return tr(lang, "v_r_monsoon");
+    case "night": return tr(lang, "v_r_night");
+    default: return r.code;
+  }
+}
 
-      {d?.reporters.some(r => r.description) && <p className="ad-desc">{d.reporters.filter(r => r.description).map(r => `“${r.description}”`).join(" · ")}</p>}
-      {d && <div className="ad-intel-grid">
-        <div><h3>{tr(lang, "s_location")} <Tag kind="gis" lang={lang} /></h3><p>{d.address_text ? <><b>{d.address_text}</b><br /></> : null}{d.area ?? tr(lang, "s_noArea")} · {d.lat?.toFixed(5)}, {d.lng?.toFixed(5)}<br /><small>{tr(lang, "s_pointSource")}: {d.location_source ?? tr(lang, "s_notRecorded")}</small>{d.lat != null && d.lng != null && <><br /><a href={`https://www.openstreetmap.org/?mlat=${d.lat.toFixed(5)}&mlon=${d.lng.toFixed(5)}#map=17/${d.lat.toFixed(5)}/${d.lng.toFixed(5)}`} target="_blank" rel="noreferrer">{tr(lang, "s_openMap")}</a></>}</p>{d.lat != null && d.lng != null && <iframe className="ad-map" title={tr(lang, "s_location")} loading="lazy" src={mapSrc(d.lat, d.lng)} />}</div>
-        <div><h3>{tr(lang, "s_whatSystemThinks")} <Tag kind="ml" lang={lang} /></h3><p><AiChip ai={d.ai} lang={lang} /></p>{d.reporters.some(r => r.ai_disagreement) && <p className="muted-line">{tr(lang, "s_photoSaid")}: {catLabel(lang, d.reporters.find(r => r.ai_disagreement)?.ai_disagreement?.image ?? "")}, {tr(lang, "s_descSaid")}: {catLabel(lang, d.reporters.find(r => r.ai_disagreement)?.ai_disagreement?.text ?? "")}.</p>}</div>
-        <div><h3>{tr(lang, "s_textRead")} <Tag kind="rule" lang={lang} /></h3>{d.nlp ? <ul className="plain"><li>{tr(lang, "s_duration")}: {d.nlp.duration?.text ? durationLabel(lang, d.nlp.duration.text) : tr(lang, "s_notStated")}</li><li>{tr(lang, "s_obstruction")}: {d.nlp.obstruction ? obstructionLabel(lang, d.nlp.obstruction) : tr(lang, "s_notStated")}</li><li>{tr(lang, "s_hazard")}: {d.nlp.hazard?.map(h => hazardLabel(lang, h)).join(", ") ?? tr(lang, "s_notStated")}</li><li>{tr(lang, "s_urgency")}: {d.nlp.urgency ? severityName(lang, d.nlp.urgency) : "—"}</li></ul> : <p className="muted-line">{tr(lang, "s_noDesc")}</p>}</div>
-        <div><h3>{tr(lang, "s_respDept")}</h3><p>{deptLabel(lang, d.department)}</p>{d.reporters.some(r => r.citizen_message) && <><h3>{tr(lang, "s_citizenMsg")} <Tag kind="you" lang={lang} /></h3>{d.reporters.filter(r => r.citizen_message).map((r, k) => <p className="ad-msg" key={k}>“{r.citizen_message}”</p>)}</>}</div>
-      </div>}
-      <h3>{tr(lang, "s_whyPriority")} ({issue.priority_score}/100) <Tag kind="rule" lang={lang} /></h3>
-      {detail.isPending && <div className="ad-reasons"><span className="skeleton-line w50" /></div>}
-      {detail.isError && <p className="muted-line">{tr(lang, "s_loadDetailFail")} <button className="text-button" onClick={() => detail.refetch()}>{tr(lang, "s_retry")}</button></p>}
-      {d && <div className="ad-reasons">{d.reasons.slice(0, 6).map(r => <span key={r.label}>{reasonLabel(lang, r.label, s => severityName(lang, s))}<b>+{r.pts}</b></span>)}</div>}
+/** One generated sentence: what, with the street or landmark, and the school or hospital found on the map. */
+function whatSentence(d: Brief, lang: Lang): string {
+  const place = d.what.address ?? d.where.area ?? "";
+  let s = lang === "en" ? d.title : place ? trf(lang, "v_whatAt", { category: catLabel(lang, d.category), place }) : catLabel(lang, d.category);
+  if (d.what.near) s += `, ${trf(lang, "v_whatNear", { m: d.what.near.distance_m, place: d.what.near.name ?? tr(lang, d.what.near.kind === "hospital" ? "v_kind_hospital" : "v_kind_school") })}`;
+  return s;
+}
 
-      {d && d.history.length > 0 && <><h3>{tr(lang, "s_timeline")}</h3>
-        <ol className="timeline">{d.history.map((h, k) => <li key={k}><b>{statusName(lang, h.status)}</b><small>{ago(h.at)}</small></li>)}</ol></>}
+/** Picture of the locality (public/areas/<area>.png, from the Location_images folder). Small and lazy; nothing is shown when the area has no picture. */
+function AreaPhoto({ area }: { area: string | null }) {
+  const [bad, setBad] = useState<string | null>(null);
+  if (!area || bad === area) return null;
+  return <figure className="area-photo"><img src={`${BASE}areas/${areaSlug(area)}.png`} alt={area} loading="lazy" onError={() => setBad(area)} /><figcaption>{area}</figcaption></figure>;
+}
 
-      <h3>{tr(lang, "s_messages")}</h3>
-      <div className="thread">{d && d.messages.length === 0 && <p className="muted-line">{tr(lang, "s_noMessages")}</p>}{d?.messages.map(m => <div key={m.id} className={`msg ${m.from}`}><small>{m.by} · {ago(m.at)}</small><p>{m.text}</p></div>)}</div>
-      {readOnly ? <p className="muted-line">{tr(lang, "s_readOnly")}</p> : <>
-      <textarea value={reply} maxLength={1000} onChange={e => setReply(e.target.value)} placeholder={tr(lang, "s_writeMsg")} rows={3} aria-label={tr(lang, "s_writeMsg")} />
-      <div className="ad-actions">
-        <button className="secondary" onClick={() => act(issue.id, null)} disabled={!reply.trim() || acting}>{tr(lang, "s_sendMsg")}</button>
-        <button className="secondary" onClick={() => act(issue.id, "Under Review")} disabled={issue.status === "Under Review" || acting}>{tr(lang, "s_underReview")}</button>
-        <button className="secondary" onClick={() => act(issue.id, "In Progress")} disabled={issue.status === "In Progress" || acting}>{tr(lang, "s_inProgressBtn")}</button>
-        <button className="primary" onClick={() => act(issue.id, "Resolved")} disabled={issue.status === "Resolved" || acting}><Icon name="check" size={16} /> {tr(lang, "s_resolve")}</button>
+type Panel = null | "assign" | "schedule" | "hold" | "reject" | "duplicate" | "transfer";
+
+export default function Brief({ id, lang = "en", readOnly = false, onClose }: { id: string; lang?: Lang; readOnly?: boolean; onClose?: () => void }) {
+  const qc = useQueryClient();
+  // Photo links are signed for 15 minutes, so refresh the open brief every 10 minutes.
+  const q = useQuery({ queryKey: [readOnly ? "admin" : "authority", "incident", id], queryFn: () => (readOnly ? api.adminIncident(id) : api.authorityDetail(id)), refetchInterval: 10 * 60_000 });
+  const d = q.data;
+  const [panel, setPanel] = useState<Panel>(null);
+  const [reply, setReply] = useState("");
+  const [text, setText] = useState("");
+  const [date, setDate] = useState("");
+  const [officer, setOfficer] = useState("");
+  const [category, setCategory] = useState("");
+  const [copied, setCopied] = useState(false);
+  const officers = useQuery({ queryKey: ["authority", "officers"], queryFn: api.officers, enabled: !readOnly && (panel === "assign"), staleTime: 5 * 60_000 });
+
+  const refresh = () => {
+    for (const key of [["authority", "list"], ["authority", "stats"], ["authority", "incident", id], ["authority", "map"], ["authority", "analytics"]]) qc.invalidateQueries({ queryKey: key });
+    setPanel(null); setText(""); setReply("");
+  };
+  const act = useMutation({ mutationFn: (body: Parameters<typeof api.authorityUpdate>[1]) => api.authorityUpdate(id, body), onSuccess: refresh });
+
+  if (q.isPending) return <div className="brief" aria-busy="true"><div className="skeleton-line w75" /><div className="skeleton-line w50" /><div className="skeleton-line w90" /></div>;
+  if (q.isError || !d) return <div className="brief"><p className="muted-line">{tr(lang, "s_loadDetailFail")} <button className="text-button" onClick={() => q.refetch()}>{tr(lang, "s_retry")}</button></p></div>;
+
+  const t = tone(d);
+  const status = d.status as Status;
+  const action: NextAction = readOnly ? null : nextAction(d);
+  const open = isOpen(status);
+  const reasons = d.reasons.slice(0, 3);
+  const photoDisagrees = !!d.ai.category && d.ai.source !== "text" && catLabel("en", d.ai.category) !== catLabel("en", d.category);
+  const estimate = d.people_estimate === "few" ? tr(lang, "v_est_few") : d.people_estimate === "many" ? tr(lang, "v_est_many") : null;
+  const dept = deptLabel(lang, d.department);
+  const run = (body: Parameters<typeof api.authorityUpdate>[1]) => act.mutate(body);
+  const primaryLabel: Record<Exclude<NextAction, null>, StrKey> = { acknowledge: "v_a_acknowledge", assign: "v_a_assign", schedule: "v_a_schedule", start: "v_a_start", resume: "v_a_resume", resolve: "v_a_resolve" };
+  const doPrimary = () => {
+    if (action === "acknowledge") run({ status: "Acknowledged" });
+    else if (action === "start" || action === "resume") run({ status: "In Progress" });
+    else if (action === "resolve") run({ status: "Resolved" });
+    else if (action) setPanel(action);
+  };
+  const copyLocation = async () => {
+    const link = `https://maps.google.com/?q=${d.where.lat.toFixed(6)},${d.where.lng.toFixed(6)}`;
+    try { await navigator.clipboard.writeText([d.where.address, d.where.area, link].filter(Boolean).join(", ")); setCopied(true); window.setTimeout(() => setCopied(false), 2000); } catch { /* clipboard blocked: nothing to do */ }
+  };
+  const submitPanel = () => {
+    if (panel === "assign") run({ assigned_to: officer || officers.data?.items[0]?.id });
+    else if (panel === "schedule") run({ status: "Scheduled", scheduled_for: date });
+    else if (panel === "hold") run({ status: "On Hold", reason: text.trim() });
+    else if (panel === "reject") run({ status: "Rejected", reason: text.trim() });
+    else if (panel === "duplicate") run({ status: "Duplicate", duplicate_of: text.trim() });
+    else if (panel === "transfer") run({ status: "Transferred", category, reason: text.trim() });
+  };
+  const panelReady = panel === "assign" ? !!(officer || officers.data?.items.length) : panel === "schedule" ? !!date : panel === "transfer" ? !!category && !!text.trim() : !!text.trim();
+  const moreItems: { key: Panel | "ack" | "start" | "res"; label: StrKey }[] = [];
+  if (!readOnly && open) {
+    if (action !== "assign") moreItems.push({ key: "assign", label: d.assignee ? "v_m_reassign" : "v_a_assign" });
+    if (status !== "Acknowledged" && action !== "acknowledge") moreItems.push({ key: "ack", label: "v_a_acknowledge" });
+    if (action !== "schedule") moreItems.push({ key: "schedule", label: "v_a_schedule" });
+    if (status !== "In Progress" && action !== "start" && action !== "resume") moreItems.push({ key: "start", label: "v_a_start" });
+    if (status !== "On Hold") moreItems.push({ key: "hold", label: "v_m_hold" });
+    moreItems.push({ key: "reject", label: "v_m_reject" }, { key: "duplicate", label: "v_m_duplicate" }, { key: "transfer", label: "v_m_transfer" });
+    if (action !== "resolve") moreItems.push({ key: "res", label: "v_a_resolve" });
+  } else if (!readOnly && status === "Resolved") moreItems.push({ key: "start", label: "v_m_rework" });
+  const pickMore = (k: Panel | "ack" | "start" | "res") => { if (k === "ack") run({ status: "Acknowledged" }); else if (k === "start") run({ status: "In Progress" }); else if (k === "res") run({ status: "Resolved" }); else setPanel(k); };
+
+  return <div className={`brief tone-${t}`}>
+    <header className="brief-head">
+      <div className="brief-id"><b>{d.public_id}</b><span className="cat-tag"><CategoryPhoto category={d.category} className="cat-dot" label={false} />{catLabel(lang, d.category)}</span><StatusPill status={status} lang={lang} /><ResponseChip response={d.response} lang={lang} /><DueText row={d} lang={lang} />
+        {d.reopen_count > 0 && <span className="due red">{trf(lang, "v_reopened", { n: d.reopen_count })}</span>}</div>
+      <div className="brief-tools">{onClose && <button className="secondary compact" onClick={onClose}>{tr(lang, "m_close")}</button>}<button className="secondary compact print-btn" onClick={() => window.print()}>{tr(lang, "v_print")}</button></div>
+    </header>
+
+    <section className={`sev-panel sev-${d.response.toLowerCase()}`} aria-label={tr(lang, `resp_${d.response}` as StrKey)}>
+      <span className="sev-icon" aria-hidden="true"><SevImg response={d.response} size={40} /></span>
+      <div><b>{tr(lang, `resp_${d.response}` as StrKey)}</b>
+        <p><span>{tr(lang, "v_sevReason")}:</span> {reasons[0] ? reasonText(lang, reasons[0]) : tr(lang, "v_whyNone")}</p>
+        <p><span>{tr(lang, "v_sevAction")}:</span> {tr(lang, `resp_${d.response}_tip` as StrKey)}</p></div>
+    </section>
+
+    <section aria-label={tr(lang, "v_what")}>
+      <h3>{tr(lang, "v_what")}</h3>
+      <p className="what">{whatSentence(d, lang)}</p>
+      <p className="meta-line">{trf(lang, d.citizens === 1 ? "v_reportedBy1" : "v_reportedByN", { n: d.citizens ?? 1 })}{estimate ? ` · ${trf(lang, "v_estimate", { text: estimate })}` : ""}</p>
+      {photoDisagrees && <p className="meta-line warn"><em className="ai-flag">{tr(lang, "v_aiUnverified")}</em> {trf(lang, "v_photoCheck", { looks: catLabel(lang, d.ai.category ?? ""), chosen: catLabel(lang, d.category) })}</p>}
+      {d.duplicate_of && <p className="meta-line">{trf(lang, "v_dupOf", { no: d.duplicate_of })}</p>}
+      <p className="meta-line">{d.assignee ? trf(lang, "v_assigned", { name: d.assignee.name, dept, ward: d.area ?? "—" }) : <>{tr(lang, "v_unassigned")}</>}{d.scheduled_for ? ` · ${trf(lang, "v_visit", { date: shortDate(d.scheduled_for, lang) })}` : ""}</p>
+      {d.status_reason && ["On Hold", "Rejected", "Reopened", "Transferred"].includes(status) && <p className="meta-line">{staffStatus(lang, status)}: {d.status_reason}</p>}
+    </section>
+
+    <section aria-label={tr(lang, "v_why")}>
+      <h3>{tr(lang, "v_why")}</h3>
+      {reasons.length === 0 ? <p className="muted-line">{tr(lang, "v_whyNone")}</p> : <ul className="why-list">{reasons.map((r, k) => <li key={k}><span>{reasonText(lang, r)}</span><em className={`src src-${r.source}`}>{tr(lang, `v_src_${r.source}` as StrKey)}</em></li>)}</ul>}
+    </section>
+
+    <section aria-label={tr(lang, "v_where")}>
+      <h3>{tr(lang, "v_where")}</h3>
+      <p className="where"><CategoryPhoto category={d.category} className="cat-dot" label={false} /> {[d.where.address, d.where.area].filter(Boolean).join(" · ") || tr(lang, "s_noArea")}</p>
+      <AreaPhoto area={d.where.area} />
+      <iframe className="ad-map" title={tr(lang, "v_where")} loading="lazy" src={mapSrc(d.where.lat, d.where.lng)} />
+      <div className="act-row">
+        <a className="secondary compact linkbtn" href={navigateUrl(d.where.lat, d.where.lng)} target="_blank" rel="noreferrer"><Icon name="map" size={15} /> {tr(lang, "v_navigate")}</a>
+        <button className="secondary compact" onClick={() => void copyLocation()}>{copied ? tr(lang, "v_copied") : tr(lang, "v_copy")}</button>
       </div>
-      </>}
+    </section>
+
+    {d.evidence.length > 0 && <section aria-label={tr(lang, "v_evidence")}>
+      <h3>{tr(lang, "v_evidence")}</h3>
+      <div className="evidence">{d.evidence.map((e, k) => <figure key={k} className="ev">
+        {e.photos.length > 0 ? <div className="ev-photos">{e.photos.map((p, j) => <a key={j} href={p.url} target="_blank" rel="noreferrer"><img src={p.thumb_url} alt={`${tr(lang, "v_evidence")} ${k + 1}.${j + 1}`} loading="lazy" /></a>)}</div> : <div className="ev-none"><Evidence url={null} category={d.category} alt="" className="ev-ph" /><small>{tr(lang, "s_noPhoto")}</small></div>}
+        <figcaption><b>{e.reporter}</b> · {new Date(e.at).toLocaleString(LOCALE[lang], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}{e.description ? <><br />“{e.description}”</> : null}{e.citizen_message ? <><br />{tr(lang, "ad_citizenSays")}: “{e.citizen_message}”</> : null}</figcaption>
+      </figure>)}</div>
+    </section>}
+
+    {d.history_here.count > 0 && <section aria-label={tr(lang, "v_histHere")}>
+      <h3>{tr(lang, "v_histHere")}</h3>
+      <p>{trf(lang, "v_histLine", { n: d.history_here.count, category: catLabel(lang, d.category), radius: d.history_here.radius_m, days: d.history_here.days })} <b>{tr(lang, "v_histCheck")}</b></p>
+      <ul className="plain">{d.history_here.items.map(h => <li key={h.public_id}>{h.public_id} · {shortDate(h.created_at, lang)} · {staffStatus(lang, h.status)}</li>)}</ul>
+    </section>}
+
+    {d.nearby_open.count > 0 && <section aria-label={tr(lang, "v_nearby")}>
+      <h3>{tr(lang, "v_nearby")}</h3>
+      <p>{trf(lang, "v_nearbyLine", { n: d.nearby_open.count, radius: d.nearby_open.radius_m })} <b>{tr(lang, "v_sameCrew")}</b></p>
+      <ul className="plain">{d.nearby_open.items.map(n => <li key={n.id}>{n.public_id} · {catLabel(lang, n.category)} · {n.distance_m} m · {staffStatus(lang, n.status)}</li>)}</ul>
+    </section>}
+
+    <section aria-label={tr(lang, "v_timeline")}>
+      <h3>{tr(lang, "v_timeline")}</h3>
+      <ol className="timeline-v">{d.timeline.map((h, k) => <li key={k} className={h.note ? "note" : ""}>
+        <b>{h.note ? h.reason : staffStatus(lang, h.status)}</b><small>{new Date(h.at).toLocaleString(LOCALE[lang], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}{h.by ? ` · ${h.by}` : ""}</small>
+        {!h.note && h.reason && <small className="reason">{h.reason}</small>}</li>)}</ol>
+    </section>
+
+    <section aria-label={tr(lang, "v_messages")}>
+      <h3>{tr(lang, "v_messages")}</h3>
+      <div className="thread">{d.messages.length === 0 && <p className="muted-line">{tr(lang, "s_noMessages")}</p>}{d.messages.map(m => <div key={m.id} className={`msg ${m.from}`}><small>{m.by} · {new Date(m.at).toLocaleString(LOCALE[lang], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</small><p>{m.text}</p></div>)}</div>
+      {!readOnly && <><textarea value={reply} maxLength={1000} onChange={e => setReply(e.target.value)} placeholder={tr(lang, "s_writeMsg")} rows={2} aria-label={tr(lang, "s_writeMsg")} />
+        <button className="secondary compact" disabled={!reply.trim() || act.isPending} onClick={() => run({ message: reply.trim() })}>{tr(lang, "s_sendMsg")}</button></>}
+    </section>
+
+    {!readOnly && (action || moreItems.length > 0 || status === "Resolved") && <footer className="next-action">
+      {panel && <div className="act-panel" role="group">
+        {panel === "assign" && <label className="fld"><span>{tr(lang, "v_a_assign")}</span><select value={officer} onChange={e => setOfficer(e.target.value)}>{officers.data?.items.map(o => <option key={o.id} value={o.id}>{o.name}{o.is_me ? ` (${tr(lang, "v_me")})` : ""} · {deptLabel(lang, o.department)}</option>)}</select></label>}
+        {panel === "schedule" && <label className="fld"><span>{tr(lang, "v_visitDate")}</span><input type="date" value={date} onChange={e => setDate(e.target.value)} /></label>}
+        {(panel === "hold" || panel === "reject" || panel === "transfer") && <>
+          {panel === "transfer" && <label className="fld"><span>{tr(lang, "v_correctCat")}</span><select value={category} onChange={e => setCategory(e.target.value)}><option value="">—</option>{[...CATEGORY_NAMES, "Road Damage", "Drainage"].filter(c => c !== d.category).map(c => <option key={c} value={c}>{catLabel(lang, c)}</option>)}</select></label>}
+          <label className="fld"><span>{tr(lang, "v_reason")}</span><textarea rows={2} maxLength={500} value={text} onChange={e => setText(e.target.value)} /></label></>}
+        {panel === "duplicate" && <label className="fld"><span>{tr(lang, "v_dupNo")}</span><input value={text} maxLength={30} onChange={e => setText(e.target.value)} placeholder="IR-20261009-00001" /></label>}
+        <div className="act-row"><button className="primary" disabled={!panelReady || act.isPending} onClick={submitPanel}>{tr(lang, "v_confirm")}</button><button className="secondary" onClick={() => setPanel(null)}>{tr(lang, "v_cancel")}</button></div>
+      </div>}
+      {act.isError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {(act.error as Error).message}</div>}
+      <div className="act-row main">
+        {action ? <button className="primary big" disabled={act.isPending} onClick={doPrimary}><Icon name={action === "resolve" ? "check" : "arrow"} size={16} /> {tr(lang, primaryLabel[action])}</button>
+          : status === "Resolved" ? <span className="muted-line">{tr(lang, "v_waitCitizen")}</span> : null}
+        {moreItems.length > 0 && <details className="more"><summary className="secondary compact">{tr(lang, "v_more")}</summary>
+          <div className="more-menu" role="menu">{moreItems.map(m => <button key={m.key} role="menuitem" onClick={(e) => { (e.currentTarget.closest("details") as HTMLDetailsElement).open = false; pickMore(m.key); }}>{tr(lang, m.label)}</button>)}</div></details>}
+      </div>
+    </footer>}
+
+    <div className="print-sheet" aria-hidden="true">
+      <div className="ps-head"><div><b>iREPORT</b><span>{tr(lang, "p_title")}</span></div><div className="ps-no"><b>{d.public_id}</b><small>{tr(lang, "p_printed")}: {new Date().toLocaleString(LOCALE[lang], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</small></div></div>
+      <div className={`ps-sev sev-${d.response.toLowerCase()}`}><SevImg response={d.response} size={34} /><div><b>{tr(lang, `resp_${d.response}` as StrKey)}</b><span>{tr(lang, "v_sevReason")}: {reasons[0] ? reasonText(lang, reasons[0]) : tr(lang, "v_whyNone")}</span><span>{tr(lang, "v_sevAction")}: {tr(lang, `resp_${d.response}_tip` as StrKey)}</span></div></div>
+      <table className="ps-grid"><tbody>
+        <tr><th>{tr(lang, "v_what")}</th><td colSpan={3}>{whatSentence(d, lang)}</td></tr>
+        <tr><th>{tr(lang, "s_category")}</th><td>{catLabel(lang, d.category)}</td><th>{tr(lang, "s_dept")}</th><td>{dept}</td></tr>
+        <tr><th>{tr(lang, "p_status")}</th><td>{staffStatus(lang, status)}</td><th>{tr(lang, "p_reported")}</th><td>{new Date(d.created_at).toLocaleString(LOCALE[lang], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</td></tr>
+        <tr><th>{tr(lang, "p_dueBy")}</th><td>{d.due_at ? shortDate(d.due_at, lang) : "—"}{d.overdue ? ` (${tr(lang, "v_overdueToday")})` : ""}</td><th>{tr(lang, "p_citizens")}</th><td>{d.citizens ?? 1}</td></tr>
+        <tr><th>{tr(lang, "p_assignedTo")}</th><td>{d.assignee ? `${d.assignee.name} · ${dept}, ${d.area ?? "—"}` : tr(lang, "v_unassigned")}</td><th>{tr(lang, "p_siteVisit")}</th><td>{d.scheduled_for ? shortDate(d.scheduled_for, lang) : "______"}</td></tr>
+        <tr><th>{tr(lang, "v_where")}</th><td colSpan={3}>{[d.where.address, d.where.area].filter(Boolean).join(" · ") || tr(lang, "s_noArea")}<br /><small>{tr(lang, "p_gps")}: {d.where.lat.toFixed(5)}, {d.where.lng.toFixed(5)} · {navigateUrl(d.where.lat, d.where.lng)}</small></td></tr>
+      </tbody></table>
+      {d.reasons.length > 0 && <><h4>{tr(lang, "v_why")}</h4><ul>{d.reasons.map((r, k) => <li key={k}>{reasonText(lang, r)} <i>({tr(lang, `v_src_${r.source}` as StrKey)})</i></li>)}</ul></>}
+      {d.evidence.length > 0 && <><h4>{tr(lang, "p_reporters")}</h4><ul>{d.evidence.map((e, k) => <li key={k}><b>{e.reporter}</b>, {new Date(e.at).toLocaleString(LOCALE[lang], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}{e.description ? `: “${e.description}”` : ""}{e.citizen_message ? ` (${tr(lang, "ad_citizenSays")}: “${e.citizen_message}”)` : ""}</li>)}</ul>
+        {d.evidence.some(e => e.photos.length > 0) && <div className="ps-photos">{d.evidence.flatMap(e => e.photos).slice(0, 4).map((ph, k) => <img key={k} src={ph.thumb_url} alt="" />)}</div>}</>}
+      {d.history_here.count > 0 && <><h4>{tr(lang, "v_histHere")}</h4><p>{trf(lang, "v_histLine", { n: d.history_here.count, category: catLabel(lang, d.category), radius: d.history_here.radius_m, days: d.history_here.days })} {tr(lang, "v_histCheck")}</p><ul>{d.history_here.items.map(h => <li key={h.public_id}>{h.public_id} · {shortDate(h.created_at, lang)} · {staffStatus(lang, h.status)}</li>)}</ul></>}
+      {d.nearby_open.count > 0 && <><h4>{tr(lang, "v_nearby")}</h4><p>{trf(lang, "v_nearbyLine", { n: d.nearby_open.count, radius: d.nearby_open.radius_m })} {tr(lang, "v_sameCrew")}</p><ul>{d.nearby_open.items.map(n => <li key={n.id}>{n.public_id} · {catLabel(lang, n.category)} · {n.distance_m} m · {staffStatus(lang, n.status)}</li>)}</ul></>}
+      {d.timeline.length > 0 && <><h4>{tr(lang, "v_timeline")}</h4><table className="ps-lines"><tbody>{d.timeline.map((h, k) => <tr key={k}><td>{new Date(h.at).toLocaleString(LOCALE[lang], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</td><td>{h.note ? h.reason : staffStatus(lang, h.status)}{!h.note && h.reason ? `: ${h.reason}` : ""}</td><td>{h.by ?? ""}</td></tr>)}</tbody></table></>}
+      {d.messages.length > 0 && <><h4>{tr(lang, "v_messages")}</h4><ul>{d.messages.map(m => <li key={m.id}><b>{m.by}</b>: {m.text}</li>)}</ul></>}
+      <h4>{tr(lang, "p_workDone")}</h4>
+      <div className="ps-box tall">&nbsp;</div>
+      <table className="ps-grid"><tbody>
+        <tr><th>{tr(lang, "p_material")}</th><td>&nbsp;</td><th>{tr(lang, "p_crew")}</th><td>&nbsp;</td></tr>
+        <tr><th>{tr(lang, "p_startedOn")}</th><td>&nbsp;</td><th>{tr(lang, "p_completedOn")}</th><td>&nbsp;</td></tr>
+      </tbody></table>
+      <div className="ps-sign"><div>{tr(lang, "p_signOfficer")}</div><div>{tr(lang, "p_signSupervisor")}</div><div>{tr(lang, "p_signCitizen")}</div></div>
     </div>
   </div>;
 }

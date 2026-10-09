@@ -90,13 +90,13 @@ async def contribution(principal: CurrentUser, db: Db):
     low category-correction rate; it is never earned by volume alone."""
     row = (await db.execute(text("""
         SELECT
-          (SELECT count(*) FROM reports WHERE user_id = :u) AS submitted,
-          (SELECT count(*) FROM reports r JOIN incidents i ON i.id = r.incident_id WHERE r.user_id = :u AND (
-              i.status = 'Resolved'
+          (SELECT count(*) FROM reports WHERE user_id = :u AND duplicate_of_report_id IS NULL) AS submitted,
+          (SELECT count(*) FROM reports r JOIN incidents i ON i.id = r.incident_id WHERE r.user_id = :u AND r.duplicate_of_report_id IS NULL AND (
+              i.status IN ('Resolved', 'Closed')
               OR EXISTS (SELECT 1 FROM confirmations f WHERE f.incident_id = i.id AND f.user_id <> :u)
-              OR EXISTS (SELECT 1 FROM reports r2 WHERE r2.incident_id = i.id AND r2.user_id <> :u))) AS verified,
+              OR EXISTS (SELECT 1 FROM reports r2 WHERE r2.incident_id = i.id AND r2.user_id <> :u AND r2.duplicate_of_report_id IS NULL))) AS verified,
           (SELECT count(*) FROM confirmations WHERE user_id = :u) AS confirmations_given,
-          (SELECT count(*) FROM reports WHERE user_id = :u AND user_corrected) AS corrected"""), {"u": principal.id})).one()
+          (SELECT count(*) FROM reports WHERE user_id = :u AND user_corrected AND duplicate_of_report_id IS NULL) AS corrected"""), {"u": principal.id})).one()
     corrected_rate = row.corrected / row.submitted if row.submitted else 0.0
     trusted = row.verified >= 3 and corrected_rate <= 0.25
     return {
@@ -107,14 +107,14 @@ async def contribution(principal: CurrentUser, db: Db):
 
 @router.get("/me/summary")
 async def summary(principal: CurrentUser, db: Db):
-    """Three real numbers and a level. incidents_resolved = my reports whose incident is Resolved;
+    """Three real numbers and a level. incidents_resolved = my reports whose incident is Resolved or Closed;
     confirmations_received = sum of (affected_count - 1) over incidents I started (my report is the earliest).
     Level: Contributor >= 1 resolved; Trusted contributor >= 5 resolved and >= 10 submitted. Never from volume alone."""
     row = (await db.execute(text("""
         SELECT
-          (SELECT count(*) FROM reports WHERE user_id = :u)::int AS submitted,
-          (SELECT count(*) FROM reports r JOIN incidents i ON i.id = r.incident_id WHERE r.user_id = :u AND i.status = 'Resolved')::int AS resolved,
+          (SELECT count(*) FROM reports WHERE user_id = :u AND duplicate_of_report_id IS NULL)::int AS submitted,
+          (SELECT count(*) FROM reports r JOIN incidents i ON i.id = r.incident_id WHERE r.user_id = :u AND r.duplicate_of_report_id IS NULL AND i.status IN ('Resolved', 'Closed'))::int AS resolved,
           (SELECT COALESCE(sum(i.affected_count - 1), 0) FROM incidents i WHERE i.affected_count > 1 AND
-              (SELECT r.user_id FROM reports r WHERE r.incident_id = i.id ORDER BY r.created_at, r.id LIMIT 1) = :u)::int AS received"""), {"u": principal.id})).one()
+              (SELECT r.user_id FROM reports r WHERE r.incident_id = i.id AND r.duplicate_of_report_id IS NULL ORDER BY r.created_at, r.id LIMIT 1) = :u)::int AS received"""), {"u": principal.id})).one()
     level = "trusted" if row.resolved >= 5 and row.submitted >= 10 else "contributor" if row.resolved >= 1 else None
     return {"reports_submitted": row.submitted, "incidents_resolved": row.resolved, "confirmations_received": row.received, "level": level}

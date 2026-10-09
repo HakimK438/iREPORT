@@ -1,14 +1,25 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Component, lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { Icon, type IconName } from "./Icon";
-import { AREAS, AREA_CENTRES, STATUSES } from "./store";
-import { api, refreshSession, setSessionLostHandler, setToken, type ApiUser, type IncidentPublic, type Page as ApiPage, type Session } from "./api";
-import { Brand, distanceLabel, homeCards, statusLabel } from "./brand";
-import { menuText, severityName, statusName, tr, type StrKey } from "./i18n";
+import { AREAS, AREA_CENTRES, LIFECYCLE, type Status } from "./store";
+import { compressPhoto } from "./compress";
+import { api, refreshSession, setSessionLostHandler, setToken, type ApiUser, type IncidentPublic, type MyReport, type Page as ApiPage, type Session } from "./api";
+import { Brand, distanceLabel, homeCards } from "./brand";
+import { menuText, severityName, statusName, tr, trf, type StrKey } from "./i18n";
 import { FAQS, HOW_STEPS, HOW_TIPS, HOW_UI } from "./i18nStaff";
 import AuthPage from "./AuthPage";
 import AuthorityDashboard from "./AuthorityDashboard";
 import AdminPanel from "./AdminPanel";
+
+/** If the control room crashes (for example the API is an older version than this frontend), show why instead of a blank page. */
+class StaffBoundary extends Component<{ lang: Lang; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return <main className="page section"><div className="empty-note error" role="alert"><Icon name="alert" /><span><b>{tr(this.props.lang, "v_apiOutdated")}</b><small>{tr(this.props.lang, "v_apiOutdatedHelp")}</small></span><button className="secondary compact" onClick={() => window.location.reload()}>{tr(this.props.lang, "s_retry")}</button></div></main>;
+  }
+}
 
 // The report flow (photo compression, AI step) is a separate chunk, loaded only when a report starts.
 const ReportFlow = lazy(() => import("./ReportFlow"));
@@ -112,10 +123,18 @@ function Faq({ lang }: { lang: Lang }) {
 
 /** Landing-page guide: what to do, in order, plus tips and what happens afterwards. */
 function HowItWorks({ lang, open }: { lang: Lang; open: () => void }) {
-  return <div className="how-guide"><span className="eyebrow">{HOW_UI.eyebrow[lang]}</span><h2>{HOW_UI.title[lang]}</h2><p className="how-sub">{HOW_UI.sub[lang]}</p>
-    <ol className="how-grid">{HOW_STEPS.map(s => <li key={s.title.en}><span className="how-ico"><Icon name={s.icon as IconName} size={22} /></span><b>{s.title[lang]}</b><p>{s.body[lang]}</p></li>)}</ol>
-    <div className="how-cols"><div><h3>{HOW_UI.tips[lang]}</h3><ul>{HOW_TIPS.map(t => <li key={t.en}>{t[lang]}</li>)}</ul></div>
-      <div><h3>{HOW_UI.after[lang]}</h3><div className="how-status"><span>{HOW_UI.after1[lang]}</span><i /><span>{HOW_UI.after2[lang]}</span><i /><span>{HOW_UI.after3[lang]}</span><i /><span>{HOW_UI.after4[lang]}</span></div><p>{HOW_UI.afterNote[lang]}</p><button className="primary" onClick={open}><Icon name="camera" /> {HOW_UI.start[lang]}</button></div></div></div>;
+  const alert = HOW_TIPS[HOW_TIPS.length - 1], tips = HOW_TIPS.slice(0, -1);
+  const stages = [HOW_UI.after1, HOW_UI.after2, HOW_UI.after3, HOW_UI.after4];
+  return <div className="how-guide">
+    <div className="how-head"><div><span className="eyebrow">{HOW_UI.eyebrow[lang]}</span><h2>{HOW_UI.title[lang]}</h2><p className="how-sub">{HOW_UI.sub[lang]}</p></div>
+      <div className="how-cta"><button className="primary" onClick={open}><Icon name="camera" /> {HOW_UI.start[lang]}</button><small><Icon name="clock" size={14} /> {tr(lang, "how_minutes")}</small></div></div>
+    <ol className="how-steps">{HOW_STEPS.map((s, n) => <li key={s.title.en}><span className="hs-badge"><span className="hs-ico"><Icon name={s.icon as IconName} size={24} /></span><em>{n + 1}</em></span><div><small>{tr(lang, "how_stepWord")} {n + 1}</small><h3>{s.title[lang]}</h3><p>{s.body[lang]}</p></div></li>)}</ol>
+    <div className="how-alert" role="note"><span><Icon name="phone" size={22} /></span><div><b>{tr(lang, "how_emergency")}</b><p>{alert[lang]}</p></div></div>
+    <div className="how-cols">
+      <div><h3>{tr(lang, "how_tipsTitle")}</h3><ul className="how-tips">{tips.map(x => <li key={x.en}><Icon name="check" size={16} /><span>{x[lang]}</span></li>)}</ul></div>
+      <div><h3>{tr(lang, "how_afterTitle")}</h3><ol className="how-path">{stages.map((x, n) => <li key={x.en}><i>{n + 1}</i><span>{x[lang]}</span></li>)}</ol><p>{HOW_UI.afterNote[lang]}</p></div>
+    </div>
+  </div>;
 }
 
 function BmcOffice() {
@@ -162,7 +181,7 @@ const COMMUNITY_FILTERS: Record<string, { category?: string; status?: string; ra
   Nearby: { radius: 2000 }, All: { radius: 50000 }, Potholes: { category: "Pothole", radius: 25000 },
   Streetlights: { category: "Streetlight", radius: 25000 }, Garbage: { category: "Garbage", radius: 25000 }, Water: { category: "Water Leakage", radius: 25000 },
   Electrical: { category: "Electrical Hazard", radius: 25000 },
-  Pending: { status: "Reported,Under Review", radius: 25000 }, "In Progress": { status: "In Progress", radius: 25000 }, Resolved: { status: "Resolved", radius: 25000 },
+  Pending: { status: "Reported,Acknowledged", radius: 25000 }, "In Progress": { status: "Scheduled,In Progress,Reopened", radius: 25000 }, Resolved: { status: "Resolved,Closed", radius: 25000 },
 };
 const COMMUNITY_SORT: Record<string, string> = { Nearest: "nearest", Recent: "recent", "Most affected": "affected", "High severity": "severity" };
 
@@ -205,7 +224,7 @@ function Community({ lang, user, go, defaultArea }: { lang: Lang; user: User | n
     {!centre && <div className="empty-note"><Icon name="search" /><span><b>{tr(lang, "cmChoose")}</b><small>{tr(lang, "cmChooseHelp")}</small></span></div>}
     {feed.isPending && centre && <div className="incident-grid">{[0, 1, 2].map(k => <div key={k} className="incident-card skeleton-card"><div className="skeleton-block tall" /><div className="incident-body"><div className="skeleton-line w50" /><div className="skeleton-line w90" /><div className="skeleton-line w60" /></div></div>)}</div>}
     {feed.isError && <div className="empty-note error"><Icon name="alert" /><span><b>{tr(lang, "cmLoadError")}</b><small>{(feed.error as Error).message}</small></span><button className="secondary compact" onClick={() => feed.refetch()}>{tr(lang, "rpRetry")}</button></div>}
-    {items.length > 0 && <div className="incident-grid">{items.map(i => <IncidentCard key={i.id} title={i.title} area={[i.area ?? "Mumbai", distanceLabel(i.distance_m)].filter(Boolean).join(" · ")} type={i.category.toUpperCase()} affected={i.affected_count} image={i.thumb_url} severity={`${severityName(lang, i.severity).toUpperCase()} ${tr(lang, "rpSeverity").toUpperCase()}`} status={statusLabel(i.status)} confirmed={!!i.confirmed_by_me || !!i.reported_by_me} busy={confirm.isPending && confirm.variables?.id === i.id} onConfirm={() => onConfirm(i)} sample={i.sample_confidence ?? null} lang={lang} />)}</div>}
+    {items.length > 0 && <div className="incident-grid">{items.map(i => <IncidentCard key={i.id} title={i.title} area={[i.area ?? "Mumbai", distanceLabel(i.distance_m)].filter(Boolean).join(" · ")} type={i.category.toUpperCase()} affected={i.affected_count} image={i.thumb_url} severity={`${severityName(lang, i.severity).toUpperCase()} ${tr(lang, "rpSeverity").toUpperCase()}`} status={statusName(lang, i.status)} confirmed={!!i.confirmed_by_me || !!i.reported_by_me} busy={confirm.isPending && confirm.variables?.id === i.id} onConfirm={() => onConfirm(i)} sample={i.sample_confidence ?? null} lang={lang} />)}</div>}
     {feed.hasNextPage && <button className="secondary load-more" onClick={() => feed.fetchNextPage()} disabled={feed.isFetchingNextPage}>{feed.isFetchingNextPage ? tr(lang, "rpLoading") : tr(lang, "cmMore")}</button>}
     {confirm.isError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {(confirm.error as Error).message}</div>}
     {items.some(i => i.sample_confidence != null) && <p className="muted-line sample-note">{tr(lang, "ad_samples")}</p>}
@@ -217,6 +236,50 @@ function ReplyBox({ incidentId }: { incidentId: string }) {
   const qc = useQueryClient(); const [text, setText] = useState("");
   const send = useMutation({ mutationFn: () => api.reply(incidentId, text.trim()), onSuccess: () => { setText(""); qc.invalidateQueries({ queryKey: ["reports", "mine"] }); } });
   return <div className="reply-box"><textarea value={text} maxLength={1000} rows={2} onChange={e => setText(e.target.value)} placeholder="Reply to the authority (optional)" aria-label="Reply to the authority" /><button className="secondary compact" disabled={!text.trim() || send.isPending} onClick={() => send.mutate()}>{send.isPending ? "Sending…" : "Send reply"}</button>{send.isError && <small className="err">{(send.error as Error).message}</small>}</div>;
+}
+
+/** How far a complaint has got along the citizen-visible lifecycle. Side states map to where the complaint stopped. */
+function progressOf(status: string, history: { status: string }[]): number {
+  const idx = (x: string) => LIFECYCLE.indexOf(x as Status);
+  if (idx(status) >= 0) return idx(status);
+  if (status === "Reopened") return idx("In Progress"); // back in work
+  const reached = history.map(h => idx(h.status)).filter(n => n >= 0);
+  return reached.length ? Math.max(...reached) : 0; // On Hold, Rejected, Duplicate, Transferred: where it stopped
+}
+
+/** Resolved complaint: what the ward office did (work note, after photo) and the citizen's answer: confirm, or reopen with a reason. */
+function ResolutionBox({ r, lang }: { r: MyReport; lang: Lang }) {
+  const qc = useQueryClient();
+  const [asking, setAsking] = useState(false), [reason, setReason] = useState("");
+  const refresh = () => { qc.invalidateQueries({ queryKey: ["reports"] }); qc.invalidateQueries({ queryKey: ["contribution"] }); qc.invalidateQueries({ queryKey: ["summary"] }); };
+  const confirm = useMutation({ mutationFn: () => api.confirmFixed(r.incident_id), onSuccess: refresh });
+  const reopen = useMutation({ mutationFn: () => api.reopen(r.incident_id, reason.trim()), onSuccess: () => { setAsking(false); setReason(""); refresh(); } });
+  const when = r.closes_at ? new Date(r.closes_at).toLocaleDateString(lang === "en" ? "en-IN" : lang === "hi" ? "hi-IN" : "mr-IN", { day: "numeric", month: "short" }) : "";
+  return <div className="resolution-box" role="group" aria-label={tr(lang, "rpFixedTitle")}>
+    <h4><Icon name="check" size={16} /> {tr(lang, "rpFixedTitle")}</h4>
+    {when && <small className="muted-line">{trf(lang, "rpAutoClose", { date: when })}</small>}
+    <div className="act-row"><button className="primary" disabled={confirm.isPending} onClick={() => confirm.mutate()}><Icon name="check" size={16} /> {tr(lang, "rpConfirmFixed")}</button>
+      <button className="secondary" onClick={() => setAsking(a => !a)} aria-expanded={asking}>{tr(lang, "rpNotFixed")}</button></div>
+    {asking && <div className="reply-box"><textarea value={reason} maxLength={500} rows={2} onChange={e => setReason(e.target.value)} placeholder={tr(lang, "rpReopenReason")} aria-label={tr(lang, "rpReopenReason")} />
+      <button className="primary compact" disabled={reason.trim().length < 3 || reopen.isPending} onClick={() => reopen.mutate()}>{tr(lang, "rpReopenSend")}</button></div>}
+    {(confirm.isError || reopen.isError) && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {((confirm.error ?? reopen.error) as Error).message}</div>}
+  </div>;
+}
+
+/** Add a photo to my own report while it is open (up to the usual limit). */
+function AddPhoto({ r, lang }: { r: MyReport; lang: Lang }) {
+  const qc = useQueryClient();
+  const input = useRef<HTMLInputElement>(null);
+  const [msg, setMsg] = useState("");
+  const add = useMutation({
+    mutationFn: async (files: File[]) => { const form = new FormData(); for (const f of files) { const b = await compressPhoto(f); form.append("photos", b, `photo.${b.type === "image/webp" ? "webp" : "jpg"}`); } return api.addPhotos(r.incident_id, form); },
+    onSuccess: () => { setMsg(tr(lang, "rpPhotoAdded")); qc.invalidateQueries({ queryKey: ["reports", "mine"] }); },
+    onError: e => setMsg((e as Error).message),
+  });
+  const room = (r.max_photos ?? 3) - (r.photo_count ?? 0);
+  if (room <= 0) return null;
+  return <div className="add-photo"><input ref={input} type="file" accept="image/*" multiple hidden onChange={e => { const f = Array.from(e.target.files ?? []).slice(0, room); e.target.value = ""; if (f.length) add.mutate(f); }} />
+    <button className="secondary compact" disabled={add.isPending} onClick={() => input.current?.click()}><Icon name="camera" size={15} /> {tr(lang, "rpAddPhoto")}</button>{msg && <small className="muted-line" role="status"> {msg}</small>}</div>;
 }
 
 function Reports({ lang, user, open, go }: { lang: Lang; user: User | null; open: (category?: string) => void; go: (p: Page) => void }) {
@@ -233,7 +296,14 @@ function Reports({ lang, user, open, go }: { lang: Lang; user: User | null; open
     {user && mine.isError && <div className="empty-note error"><Icon name="alert" /><span><b>{tr(lang, "rpLoadError")}</b><small>{(mine.error as Error).message}</small></span><button className="secondary compact" onClick={() => mine.refetch()}>{tr(lang, "rpRetry")}</button></div>}
     {user && mine.isSuccess && items.length === 0 && <div className="empty-note"><Icon name="check" /><span><b>{tr(lang, "rpEmpty")}</b><small>{tr(lang, "rpEmptyHelp")}</small></span></div>}
     {items.map(i => <div className="report-shell" key={i.report_id} style={{ marginBottom: 18 }}><div className="report-summary">{i.thumb_url ? <img src={i.thumb_url} alt="Report evidence" loading="lazy" /> : <div className="no-photo"><Icon name="camera" size={22} /><small>{tr(lang, "rpNoPhoto")}</small></div>}<div><span className={`pill st-${i.status.toLowerCase().replace(" ", "-")}`}>{statusName(lang, i.status).toUpperCase()}</span><h3>{i.title}</h3><p><Icon name="pin" size={15} /> {i.area ?? "Mumbai"}{i.department ? ` · ${i.department}` : ""}{i.affected_count > 1 ? ` · ${i.affected_count} ${tr(lang, "rpAffected")}` : ""}</p><small>{i.public_id} · {fmt(i.created_at)} · {severityName(lang, i.severity)} {tr(lang, "rpSeverity")}</small></div></div>
-      <div className="timeline t4">{STATUSES.map((x, k) => { const reached = k <= STATUSES.indexOf(i.status); const at = [...i.history].reverse().find(h => h.status === x)?.at; return <div className={reached ? "done" : ""} key={x}><span>{reached && <Icon name="check" size={14} />}</span><b>{statusName(lang, x)}</b><small>{reached && at ? fmt(at) : reached ? tr(lang, "rpDone") : tr(lang, "rpWaiting")}</small></div>; })}</div>
+      {(() => { const at = progressOf(i.status, i.history); const last = [...i.history].reverse().find(h => h.status === i.status); return <>
+        <div className="timeline t6">{LIFECYCLE.map((x, k) => { const reached = k <= at; const when = [...i.history].reverse().find(h => h.status === x)?.at; return <div className={reached ? "done" : ""} key={x}><span>{reached && <Icon name="check" size={14} />}</span><b>{statusName(lang, x)}</b><small>{reached && when ? fmt(when) : reached ? tr(lang, "rpDone") : tr(lang, "rpWaiting")}</small></div>; })}</div>
+        {!(LIFECYCLE as string[]).includes(i.status) && <p className="status-note" role="status"><b>{statusName(lang, i.status)}</b>{last?.reason ? `: ${last.reason}` : ""}</p>}
+        {i.status === "Reopened" && (i.reopen_count ?? 0) > 0 && <p className="status-note" role="status">{trf(lang, "rpReopenedNote", { n: i.reopen_count ?? 1 })}</p>}
+      </>; })()}
+      {i.can_respond && <ResolutionBox r={i} lang={lang} />}
+      {i.status === "Closed" && <p className="status-note" role="status">{tr(lang, "rpClosedNote")}</p>}
+      {["Reported", "Acknowledged", "Scheduled", "In Progress", "Reopened", "On Hold"].includes(i.status) && <AddPhoto r={i} lang={lang} />}
       {i.messages.length > 0 && <div className="thread">{i.messages.map(m => <div key={m.id} className={`msg ${m.from}`}><small>{m.from === "authority" ? `${tr(lang, "rpFromAuthority")} ${m.by}` : m.by === "You" ? tr(lang, "rpYourReply") : m.by}</small><p>{m.text}</p></div>)}</div>}
       {i.messages.some(m => m.from === "authority") && <ReplyBox incidentId={i.incident_id} />}
       <div className="resolution-note"><Icon name="shield" /><p><b>{tr(lang, "rpResolvedNote")}</b><br />{tr(lang, "rpResolvedHelp")}</p></div></div>)}
@@ -325,7 +395,7 @@ export default function App() {
     {view === "reports" && <Reports lang={lang} user={user} open={openReport} go={go} />}
     {view === "profile" && <Profile lang={lang} setLang={setLang} go={go} goFaq={goFaq} user={user} logout={logout} />}
     {view === "auth" && <AuthPage onLogin={handleLogin} bmcImage={`${import.meta.env.BASE_URL}media/bmc-headquarters.jpg`} />}
-    {view === "authority" && user && <AuthorityDashboard user={user} lang={lang} />}
+    {view === "authority" && user && <StaffBoundary lang={lang}><AuthorityDashboard user={user} lang={lang} /></StaffBoundary>}
     {view === "admin" && user && <AdminPanel lang={lang} />}
     <MobileNav page={view} go={go} open={openReport} lang={lang} user={user} logout={logout} />
     {flow !== "none" && user && <Suspense fallback={<div className="modal-backdrop"><div className="report-modal loading-modal" role="status">Loading…</div></div>}><ReportFlow key={flowKey} open={flow === "open"} initialCategory={flowCategory} lang={lang} close={() => setFlow("hidden")} discard={() => { setFlow("none"); }} done={() => { setFlow("none"); qc.invalidateQueries({ queryKey: ["reports"] }); qc.invalidateQueries({ queryKey: ["contribution"] }); qc.invalidateQueries({ queryKey: ["community"] }); go("reports"); }} /></Suspense>}

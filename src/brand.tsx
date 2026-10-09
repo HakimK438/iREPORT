@@ -31,7 +31,7 @@ export const homeCards = [
   { key: "cat_other", emoji: "🚧", file: "other.avif", flow: "Other", icon: "plus", tone: "violet" },
 ] as const satisfies readonly { key: string; emoji: string; file: string; flow: string; icon: IconName; tone: string }[];
 
-export const statusLabel = (s: string) => (s === "Reported" ? "Pending" : s === "Under Review" ? "Under review" : s === "In Progress" ? "In progress" : s);
+export const statusLabel = (s: string) => (s === "Reported" ? "Pending" : s === "Acknowledged" ? "Acknowledged" : s === "In Progress" ? "In progress" : s);
 
 export function distanceLabel(m?: number) {
   if (m === undefined) return "";

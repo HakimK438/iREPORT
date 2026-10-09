@@ -29,10 +29,10 @@ CUES: dict[str, list[str]] = {
 SEVERE_CUES = ["open manhole", "manhole open", "manhole cover", "no cover", "caved", "collapse", "sinkhole", "deep",
                "खुला मैनहोल", "मैनहोल", "गड्ढा गहरा", "धंसी", "मॅनहोल", "खचला", "खोल खड्डा"]
 
+# Flags a category implies by itself. "Main road" is NOT among them any more: whether a spot is on a main road is
+# checked on the map (osm_features), not assumed from the category.
 DEFAULT_FLAGS = {
     "Electrical Hazard": ["Live wiring"],
-    "Pothole": ["Main road"],
-    "Road Damage": ["Main road"],
     "Drainage": ["Flood risk"],
     "Streetlight": ["Night-time hazard"],
 }
@@ -101,6 +101,17 @@ def assess(category: str, problem_type: str | None, description: str | None, ext
     found, severe = cue_flags(description)
     flags = merge_flags(DEFAULT_FLAGS.get(category, []), found, extra_flags or [])
     return severity_for(category, problem_type, flags, severe), flags
+
+
+def citizen_severity_for(category: str, problem_type: str | None, description: str | None) -> str:
+    """Severity from what the citizen said about the PROBLEM itself (its size, a live wire, an injury, an open manhole).
+    Location flags (school, hospital, flood, main road) are left out on purpose: the map checks count those in the
+    likelihood, so counting them here too would count them twice. Used to raise impact by at most one level."""
+    found, severe = cue_flags(description)
+    own = [f for f in found if f in ("Live wiring", "Injury reported")]
+    if category == "Electrical Hazard":
+        own = merge_flags(own, ["Live wiring"])
+    return severity_for(category, problem_type, own, severe)
 
 
 def explanation(category: str, from_image: bool, flags: list[str], confidence: float | None = None) -> str:

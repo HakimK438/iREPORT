@@ -11,12 +11,13 @@ log = logging.getLogger("ireport")
 
 
 class ApiError(Exception):
-    def __init__(self, status: int, code: str, message: str, headers: dict[str, str] | None = None):
-        self.status, self.code, self.message, self.headers = status, code, message, headers
+    def __init__(self, status: int, code: str, message: str, headers: dict[str, str] | None = None, extra: dict | None = None):
+        self.status, self.code, self.message, self.headers, self.extra = status, code, message, headers, extra
 
 
-def body(code: str, message: str) -> dict:
-    return {"error": {"code": code, "message": message}}
+def body(code: str, message: str, extra: dict | None = None) -> dict:
+    """`extra` adds fields next to code/message (for example the incident an already_reported error points to)."""
+    return {"error": {"code": code, "message": message, **(extra or {})}}
 
 
 def not_found(what: str = "Resource") -> ApiError:
@@ -33,7 +34,7 @@ _STATUS_CODES = {400: "bad_request", 401: "unauthorized", 403: "forbidden", 404:
 def install(app: FastAPI) -> None:
     @app.exception_handler(ApiError)
     async def _api(_: Request, exc: ApiError):
-        return JSONResponse(body(exc.code, exc.message), status_code=exc.status, headers=exc.headers)
+        return JSONResponse(body(exc.code, exc.message, exc.extra), status_code=exc.status, headers=exc.headers)
 
     @app.exception_handler(StarletteHTTPException)
     async def _http(_: Request, exc: StarletteHTTPException):

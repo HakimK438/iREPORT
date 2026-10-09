@@ -40,8 +40,22 @@ class RefData:
         v = value.strip().lower()
         return next((c for c in self.categories.values() if v in (c.code, c.name.lower())), None)
 
+    def merged_ids(self, name: str) -> list[int]:
+        """Ids of every category that displays as `name` (Pothole also covers legacy Road Damage)."""
+        target = merged_name(name)
+        return [c.id for c in self.categories.values() if merged_name(c.name) == target]
+
     def category_by_code(self, code: str) -> CategoryRef:
         return next(c for c in self.categories.values() if c.code == code)
+
+
+# Older reports were filed under Road Damage and Drainage; the citizen app now offers Pothole and Water Leakage only. The control room
+# shows (and filters by) the merged category, as the category tiles always did.
+MERGED_CATEGORIES = {"Road Damage": "Pothole", "Drainage": "Water Leakage"}
+
+
+def merged_name(name: str) -> str:
+    return MERGED_CATEGORIES.get(name, name)
 
 
 ref = RefData()

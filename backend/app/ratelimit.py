@@ -16,18 +16,22 @@ def client_key(request: Request) -> str:
 
 
 def check(bucket: str, key: str, per_minute: int) -> None:
-    window = int(time.time() // 60)
+    check_window(bucket, key, per_minute, 60, "Too many attempts. Please wait a minute and try again.")
+
+
+def check_window(bucket: str, key: str, limit: int, seconds: int, message: str) -> None:
+    """At most `limit` hits per fixed window of `seconds` for (bucket, key)."""
+    window = int(time.time() // seconds)
     start, count = _hits[(bucket, key)]
     if start != window:
         start, count = window, 0
     count += 1
     _hits[(bucket, key)] = (start, count)
-    if count > per_minute:
-        retry = 60 - int(time.time() % 60)
-        raise ApiError(429, "rate_limited", "Too many attempts. Please wait a minute and try again.", {"Retry-After": str(retry)})
+    if count > limit:
+        retry = seconds - int(time.time() % seconds)
+        raise ApiError(429, "rate_limited", message, {"Retry-After": str(retry)})
     if len(_hits) > 50_000:  # keep memory bounded
-        for k in [k for k, (w, _) in _hits.items() if w != window]:
-            _hits.pop(k, None)
+        _hits.clear()  # windows differ per bucket; dropping everything only forgives some counters, never blocks anyone
 
 
 def reset() -> None:

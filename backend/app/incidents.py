@@ -4,35 +4,43 @@ import json
 import math
 import time
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from . import risk_config as cfg
+from . import status as status_mod
 from .ai import rules
+from .answers import flags_from_answers
 from .config import get_settings
 from .errors import ApiError
-from .priority import level_of, priority_of
-from .answers import flags_from_answers
+from .priority import response_of
 from .refdata import CategoryRef, nearest_area, ref
 from .schemas import ReportIn
+from .status import open_sql
 from .storage import get_storage
 
 # Public columns of an incident plus its title parts and first photo. Used with a pre-filtered
 # "page" CTE so the lateral lookups only run for the rows actually returned.
 ROW_SELECT = """
 SELECT i.id, i.public_id, c.name AS category, c.hazard_points, d.name AS department, w.name AS area, i.address_text, i.severity::text AS severity,
-       i.status::text AS status, i.flags, i.affected_count, i.priority_score, i.created_at, i.updated_at,
+       i.status::text AS status, i.flags, i.affected_count, i.priority_score, i.risk, i.due_at, i.scheduled_for, i.reopen_count, i.status_reason,
+       i.assigned_to, au.name AS assignee_name, cz.n AS citizens, i.created_at, i.updated_at,
        fr.problem_type, fr.ai_category, fr.ai_confidence, fr.ai_source, fr.ai_disagreement, fr.nlp, fr.citizen_message, fr.user_corrected, fr.location_source,
-       fr.sample_confidence, fm.thumb_key, fm.storage_key {extra}
+       fr.sample_confidence, fr.answers, fm.thumb_key, fm.storage_key {extra}
 FROM page i
 JOIN categories c ON c.id = i.category_id
 LEFT JOIN departments d ON d.id = c.department_id
 LEFT JOIN wards w ON w.id = i.ward_id
-LEFT JOIN LATERAL (SELECT r.problem_type, ac.name AS ai_category, r.ai_confidence, r.ai_source, r.ai_disagreement, r.nlp, r.citizen_message, r.user_corrected, r.location_source, r.sample_confidence
+LEFT JOIN users au ON au.id = i.assigned_to
+LEFT JOIN LATERAL (SELECT count(*)::int AS n FROM (SELECT user_id FROM reports WHERE incident_id = i.id AND duplicate_of_report_id IS NULL
+                                                  UNION SELECT user_id FROM confirmations WHERE incident_id = i.id) u) cz ON true
+LEFT JOIN LATERAL (SELECT r.problem_type, ac.name AS ai_category, r.ai_confidence, r.ai_source, r.ai_disagreement, r.nlp, r.citizen_message, r.user_corrected, r.location_source, r.sample_confidence, r.answers
                    FROM reports r LEFT JOIN categories ac ON ac.id = r.ai_category_id
-                   WHERE r.incident_id = i.id ORDER BY r.created_at LIMIT 1) fr ON true
+                   WHERE r.incident_id = i.id AND r.duplicate_of_report_id IS NULL ORDER BY r.created_at LIMIT 1) fr ON true
 LEFT JOIN LATERAL (SELECT m.thumb_key, m.storage_key FROM reports r JOIN media m ON m.report_id = r.id
-                   WHERE r.incident_id = i.id ORDER BY r.created_at, m.created_at LIMIT 1) fm ON true
+                   WHERE r.incident_id = i.id AND r.duplicate_of_report_id IS NULL ORDER BY r.created_at, m.created_at LIMIT 1) fm ON true
 """
 
 
@@ -51,7 +59,7 @@ def public_row(row) -> dict:
     return {
         "id": row.id, "public_id": row.public_id, "title": title_of(row.problem_type, row.category, row.address_text),
         "category": row.category, "area": row.area, "address_text": row.address_text, "severity": row.severity,
-        "status": row.status, "flags": list(row.flags), "affected_count": row.affected_count,
+        "status": row.status, "flags": list(row.flags), "affected_count": row.affected_count, "citizens": row.citizens,
         "created_at": row.created_at, "updated_at": row.updated_at,
         "thumb_url": storage.signed_url(row.thumb_key) if row.thumb_key else None,
         # Set only for example incidents whose photo is a training-dataset image: the image model's confidence for it.
@@ -60,7 +68,8 @@ def public_row(row) -> dict:
 
 
 def ai_summary(row) -> dict:
-    """What the AI said about the first report of this incident, and whether the citizen changed the category."""
+    """What the photo model said about the first report of this incident, and whether the citizen changed the category.
+    The control room shows it only when the model disagrees with the chosen category."""
     disagreement = row.ai_disagreement
     agreement = "disagree" if disagreement else ("agree" if row.ai_source == "image+text" else None)
     return {
@@ -69,15 +78,24 @@ def ai_summary(row) -> dict:
     }
 
 
+def due_fields(status: str, due_at: datetime | None, now: datetime | None = None) -> dict:
+    """due_at plus the officer-facing overdue facts. Overdue = open and now > due_at (one rule, used everywhere)."""
+    now = now or datetime.now(UTC)
+    overdue = bool(due_at and status_mod.is_open(status) and now > due_at)
+    return {"due_at": due_at, "overdue": overdue, "overdue_days": max(0, math.floor((now - due_at).total_seconds() / 86400)) if overdue and due_at else 0}
+
+
 def authority_row(row) -> dict:
-    """Decision-support fields for the control room. Each field says where it came from:
-    ai = ML models, nlp/reasons = fixed rules, area/lat/lng = PostGIS, department = reference table, citizen_message = user text."""
+    """Decision fields for the control room: what, where, how urgent (response category and due date), who acts next."""
     d = public_row(row)
-    p = priority_of(row.severity, row.category, row.hazard_points, list(row.flags), row.status, row.created_at, row.affected_count)
+    response, hours = response_of(row.risk)
     d.update(
-        priority_score=row.priority_score, level=level_of(row.priority_score), reasons=p.reasons,
+        risk=row.risk, response=response, response_hours=hours, priority_score=row.priority_score, **due_fields(row.status, row.due_at),
+        scheduled_for=row.scheduled_for, reopen_count=row.reopen_count, status_reason=row.status_reason,
+        assignee=({"id": row.assigned_to, "name": row.assignee_name} if row.assigned_to else None),
         department=row.department, lat=getattr(row, "lat", None), lng=getattr(row, "lng", None),
         location_source=row.location_source, ai=ai_summary(row), nlp=row.nlp, citizen_message=row.citizen_message,
+        people_estimate=(row.answers or {}).get("people"),
     )
     return d
 
@@ -91,17 +109,17 @@ HOTSPOT_DAYS = 30
 
 HOTSPOT_SQL = f"""
 WITH o AS (
-  SELECT i.id, i.category_id, i.ward_id, i.priority_score, i.affected_count, i.location,
+  SELECT i.id, i.category_id, i.ward_id, i.priority_score, i.risk, i.affected_count, i.location,
          ST_ClusterDBSCAN(ST_Transform(i.location::geometry, 32643), eps := {HOTSPOT_EPS_M}, minpoints := {HOTSPOT_MIN_POINTS}) OVER () AS cid
   FROM incidents i
-  WHERE i.status <> 'Resolved' AND i.created_at > now() - make_interval(days => {HOTSPOT_DAYS})
+  WHERE {open_sql('i')} AND i.created_at > now() - make_interval(days => {HOTSPOT_DAYS})
 ), c AS (SELECT * FROM o WHERE cid IS NOT NULL)
 SELECT c.cid, count(*)::int AS incident_count, max(c.priority_score)::int AS max_priority, sum(c.priority_score)::int AS priority_sum,
        sum(c.affected_count)::int AS affected, (sum(c.affected_count) - count(*))::int AS confirmations,
-       count(*) FILTER (WHERE c.priority_score >= 65)::int AS critical,
+       count(*) FILTER (WHERE c.risk >= 12)::int AS critical,
        avg(ST_Y(c.location::geometry)) AS lat, avg(ST_X(c.location::geometry)) AS lng,
        array_agg(c.id) AS incident_ids,
-       (SELECT count(DISTINCT r.user_id) FROM reports r JOIN c c2 ON c2.id = r.incident_id WHERE c2.cid = c.cid)::int AS citizens,
+       (SELECT count(DISTINCT r.user_id) FROM reports r JOIN c c2 ON c2.id = r.incident_id WHERE c2.cid = c.cid AND r.duplicate_of_report_id IS NULL)::int AS citizens,
        (SELECT w.name FROM c c3 JOIN wards w ON w.id = c3.ward_id WHERE c3.cid = c.cid GROUP BY w.name ORDER BY count(*) DESC, w.name LIMIT 1) AS area,
        (SELECT json_agg(json_build_object('category', cn, 'count', cnt) ORDER BY cnt DESC, cn) FROM
            (SELECT cat.name AS cn, count(*) AS cnt FROM c c4 JOIN categories cat ON cat.id = c4.category_id WHERE c4.cid = c.cid GROUP BY cat.name) q) AS categories
@@ -150,11 +168,11 @@ MAP_LIMIT = 3000
 
 MAP_SQL = f"""
 SELECT i.id, i.public_id, c.name AS category, w.name AS area, i.address_text, i.severity::text AS severity, i.status::text AS status,
-       i.priority_score, i.affected_count, i.created_at, ST_Y(i.location::geometry) AS lat, ST_X(i.location::geometry) AS lng,
+       i.priority_score, i.risk, i.due_at, i.assigned_to IS NOT NULL AS assigned, i.affected_count, i.created_at, ST_Y(i.location::geometry) AS lat, ST_X(i.location::geometry) AS lng,
        (SELECT r.problem_type FROM reports r WHERE r.incident_id = i.id ORDER BY r.created_at LIMIT 1) AS problem_type,
-       CASE WHEN i.status <> 'Resolved' THEN
+       CASE WHEN {open_sql('i')} THEN
          ST_ClusterDBSCAN(ST_Transform(i.location::geometry, 32643), eps := {CLUSTER_EPS_M}, minpoints := {CLUSTER_MIN_POINTS})
-           OVER (PARTITION BY (i.status <> 'Resolved'))
+           OVER (PARTITION BY ({open_sql('i')}))
        END AS cid
 FROM incidents i JOIN categories c ON c.id = i.category_id LEFT JOIN wards w ON w.id = i.ward_id
 ORDER BY i.priority_score DESC, i.created_at DESC
@@ -173,11 +191,12 @@ async def map_data(db: AsyncSession) -> dict:
     rows = (await db.execute(text(MAP_SQL))).all()
     incidents, by_cluster, by_area = [], {}, {}
     for r in rows:
-        is_open = r.status != "Resolved"
+        is_open = status_mod.is_open(r.status)
+        response = response_of(r.risk)[0]
         cluster = int(r.cid) if is_open and r.cid is not None else None
         item = {
             "id": r.id, "public_id": r.public_id, "title": title_of(r.problem_type, r.category, r.address_text), "category": r.category,
-            "area": r.area, "severity": r.severity, "status": r.status, "priority_score": r.priority_score, "level": level_of(r.priority_score),
+            "area": r.area, "severity": r.severity, "status": r.status, "priority_score": r.priority_score, "risk": r.risk, "response": response, "assigned": r.assigned, **due_fields(r.status, r.due_at),
             "affected_count": r.affected_count, "created_at": r.created_at, "lat": r.lat, "lng": r.lng, "cluster": cluster,
         }
         incidents.append(item)
@@ -189,7 +208,7 @@ async def map_data(db: AsyncSession) -> dict:
         a["lngs"].append(r.lng)
         if is_open:
             a["open"] += 1
-            a["critical"] += r.priority_score >= 65
+            a["critical"] += r.risk >= 12
             a["categories"][r.category] = a["categories"].get(r.category, 0) + 1
         else:
             a["resolved"] += 1
@@ -205,7 +224,7 @@ async def map_data(db: AsyncSession) -> dict:
         clusters.append({
             "id": cid, "size": len(members), "lat": lat, "lng": lng,
             "radius_m": round(max(_metres(lat, lng, m["lat"], m["lng"]) for m in members) + 60),  # +60 m so a single pair is still visible
-            "critical": sum(m["priority_score"] >= 65 for m in members), "priority_sum": sum(m["priority_score"] for m in members),
+            "critical": sum(m["risk"] >= 12 for m in members), "priority_sum": sum(m["priority_score"] for m in members),
             "categories": [{"category": k, "count": v} for k, v in sorted(counts.items(), key=lambda kv: -kv[1])],
             "areas": areas, "incident_ids": [m["id"] for m in members],
             "name": f"{top} cluster" + (f" near {areas[0]}" if areas else "") + (f" ({len(members)} open problems)"),
@@ -224,13 +243,71 @@ async def map_data(db: AsyncSession) -> dict:
     }
 
 
+# The facts behind the risk of an incident. ONE query used both to store the score (recompute_priority) and to explain it
+# (risk_inputs -> priority.reasons_of), so the stored number and the reasons shown to the officer cannot drift apart.
+# *_src says where a fact came from: 'map' (PostGIS on OpenStreetMap), 'citizen' (the reporter's own flag), 'records'
+# (other complaints in iREPORT); NULL means the factor does not apply.
+INPUTS_SQL = f"""
+SELECT i.id, i.created_at, i.status::text AS status, c.name AS category, c.impact AS base_impact, i.citizen_severity::text AS citizen_severity,
+  i.flags, i.geo_facts,
+  CASE WHEN COALESCE((i.geo_facts->>'checked')::boolean, false) THEN CASE WHEN jsonb_typeof(i.geo_facts->'main_road') = 'object' THEN 'map' END
+       WHEN 'Main road' = ANY(i.flags) THEN 'citizen' END AS main_road_src,
+  CASE WHEN jsonb_typeof(i.geo_facts->'school') = 'object' OR jsonb_typeof(i.geo_facts->'hospital') = 'object' THEN 'map'
+       WHEN 'Near school' = ANY(i.flags) OR 'Near hospital' = ANY(i.flags) THEN 'citizen' END AS sensitive_src,
+  CASE WHEN 'Night-time hazard' = ANY(i.flags) THEN 'citizen'
+       WHEN EXISTS (SELECT 1 FROM incidents s JOIN categories sc ON sc.id = s.category_id
+                    WHERE sc.code = 'streetlight' AND ireport_is_open(s.status) AND ST_DWithin(s.location, i.location, {cfg.STREETLIGHT_RADIUS_M})) THEN 'records' END AS night_src,
+  (SELECT count(*) FROM (SELECT user_id FROM reports WHERE incident_id = i.id AND duplicate_of_report_id IS NULL
+                         UNION SELECT user_id FROM confirmations WHERE incident_id = i.id) u)::int AS citizens,
+  (c.monsoon_sensitive AND extract(month FROM now() AT TIME ZONE 'Asia/Kolkata') IN {cfg.MONSOON_MONTHS}) AS monsoon
+FROM incidents i JOIN categories c ON c.id = i.category_id
+"""
+
+
+async def risk_inputs(db: AsyncSession, ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
+    """Risk facts per incident id (see INPUTS_SQL), as plain dicts for priority.reasons_of()."""
+    if not ids:
+        return {}
+    rows = (await db.execute(text(INPUTS_SQL + " WHERE i.id = ANY(CAST(:ids AS uuid[]))"), {"ids": [str(i) for i in ids]})).mappings().all()
+    return {r["id"]: dict(r) for r in rows}
+
+
 async def recompute_priority(db: AsyncSession, ids: list[uuid.UUID] | None = None) -> int:
-    """Recompute the stored score. ids=None refreshes every open incident (the hourly job)."""
-    where = "i.id = ANY(CAST(:ids AS uuid[]))" if ids is not None else "i.status <> 'Resolved'"
+    """Recompute risk, the 0-100 sort key and the due date. ids=None refreshes every open incident (the hourly job:
+    the month, the citizen count and nearby streetlight complaints change with time). due_at only ever moves EARLIER
+    here (LEAST), so a later drop in risk never extends a promise already made; transfers clear it first."""
+    where = "i.id = ANY(CAST(:ids AS uuid[]))" if ids is not None else open_sql("i")
     result = await db.execute(
-        text(f"""UPDATE incidents i SET priority_score = ireport_priority(i.severity, c.hazard_points, i.flags, i.status, i.created_at, i.affected_count)
-                 FROM categories c WHERE c.id = i.category_id AND {where}
-                 AND i.priority_score IS DISTINCT FROM ireport_priority(i.severity, c.hazard_points, i.flags, i.status, i.created_at, i.affected_count)"""),
+        text(f"""WITH f AS ({INPUTS_SQL} WHERE {where}),
+                 r AS (SELECT f.id, ireport_risk(f.base_impact::smallint, f.citizen_severity::severity_level, f.main_road_src IS NOT NULL,
+                                                 f.sensitive_src IS NOT NULL, f.citizens, f.monsoon, f.night_src IS NOT NULL) AS risk FROM f)
+                 UPDATE incidents i SET risk = r.risk, priority_score = ireport_score(r.risk),
+                        due_at = least(i.due_at, i.created_at + ireport_sla_hours(r.risk) * interval '1 hour')
+                 FROM r WHERE i.id = r.id
+                   AND (i.risk IS DISTINCT FROM r.risk OR i.priority_score IS DISTINCT FROM ireport_score(r.risk) OR i.due_at IS NULL
+                        OR i.due_at > i.created_at + ireport_sla_hours(r.risk) * interval '1 hour')"""),
+        {"ids": [str(i) for i in ids]} if ids is not None else {},
+    )
+    return result.rowcount
+
+
+async def refresh_geo_facts(db: AsyncSession, ids: list[uuid.UUID] | None = None) -> int:
+    """Map checks: nearest school / hospital within 100 m and main road within 30 m, by PostGIS against osm_features.
+    'checked' is false while no main roads are loaded (load_osm.py not run or failed): the main-road factor then uses the
+    citizen's flag. School and hospital use the map when it finds one and the citizen's flag otherwise (labelled as such)."""
+    where = "WHERE i.id = ANY(CAST(:ids AS uuid[]))" if ids is not None else ""
+
+    def nearest(kind: str, radius: float, extra: str = "") -> str:
+        return f"""(SELECT jsonb_build_object('name', f.name, 'distance_m', round(ST_Distance(f.geom, i.location))::int{extra})
+                    FROM osm_features f WHERE f.kind = '{kind}' AND ST_DWithin(f.geom, i.location, {radius})
+                    ORDER BY ST_Distance(f.geom, i.location) LIMIT 1)"""
+
+    result = await db.execute(
+        text(f"""UPDATE incidents i SET geo_facts = jsonb_build_object(
+                   'checked', EXISTS (SELECT 1 FROM osm_features WHERE kind = 'main_road'),
+                   'school', {nearest('school', cfg.SENSITIVE_RADIUS_M)},
+                   'hospital', {nearest('hospital', cfg.SENSITIVE_RADIUS_M)},
+                   'main_road', {nearest('main_road', cfg.MAIN_ROAD_RADIUS_M, ", 'highway', f.highway")}) {where}"""),
         {"ids": [str(i) for i in ids]} if ids is not None else {},
     )
     return result.rowcount
@@ -243,9 +320,46 @@ async def resolve_ward(db: AsyncSession, lat: float, lng: float) -> int | None:
     return ward or ref.ward_id(nearest_area(lat, lng))
 
 
+async def own_open_report(db: AsyncSession, user_id: uuid.UUID, lat: float, lng: float):
+    """This user's own report on an OPEN incident within the merge radius, of ANY category, made within the merge age."""
+    s = get_settings()
+    return (await db.execute(text(f"""
+        SELECT i.id, i.public_id, c.name AS category, i.status::text AS status, r.created_at AS reported_at
+        FROM reports r JOIN incidents i ON i.id = r.incident_id JOIN categories c ON c.id = i.category_id
+        WHERE r.user_id = :u AND r.duplicate_of_report_id IS NULL AND {open_sql('i')}
+          AND r.created_at > now() - make_interval(days => :days)
+          AND ST_DWithin(i.location, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, :radius)
+        ORDER BY i.location <-> ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography LIMIT 1"""),
+        {"u": user_id, "lat": lat, "lng": lng, "days": s.merge_max_age_days, "radius": s.merge_radius_m})).first()
+
+
+async def nearby_check(db: AsyncSession, user_id: uuid.UUID, lat: float, lng: float) -> dict:
+    """What the report flow asks right after the location is set: (a) my own open report here, (b) other people's open
+    complaints here that I can confirm instead of reporting again. Same 50 m rule as create_report."""
+    s = get_settings()
+    mine = await own_open_report(db, user_id, lat, lng)
+    rows = (await db.execute(text(f"""
+        SELECT i.id, i.public_id, c.name AS category, i.status::text AS status, i.affected_count, i.created_at,
+               ST_Distance(i.location, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography) AS distance_m,
+               EXISTS (SELECT 1 FROM confirmations f WHERE f.incident_id = i.id AND f.user_id = :u) AS confirmed_by_me,
+               (SELECT r.problem_type FROM reports r WHERE r.incident_id = i.id AND r.duplicate_of_report_id IS NULL ORDER BY r.created_at LIMIT 1) AS problem_type,
+               i.address_text
+        FROM incidents i JOIN categories c ON c.id = i.category_id
+        WHERE {open_sql('i')} AND ST_DWithin(i.location, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, :radius)
+          AND NOT EXISTS (SELECT 1 FROM reports r WHERE r.incident_id = i.id AND r.user_id = :u AND r.duplicate_of_report_id IS NULL)
+        ORDER BY distance_m LIMIT 5"""), {"u": user_id, "lat": lat, "lng": lng, "radius": s.merge_radius_m})).all()
+    return {
+        "radius_m": s.merge_radius_m,
+        "mine": {"id": mine.id, "public_id": mine.public_id, "category": mine.category, "status": mine.status, "reported_at": mine.reported_at} if mine else None,
+        "others": [{"id": r.id, "public_id": r.public_id, "category": r.category, "title": title_of(r.problem_type, r.category, r.address_text), "status": r.status,
+                    "affected_count": r.affected_count, "distance_m": round(r.distance_m), "confirmed_by_me": r.confirmed_by_me, "created_at": r.created_at} for r in rows],
+    }
+
+
 async def create_report(db: AsyncSession, user_id: uuid.UUID, body: ReportIn) -> dict:
-    """Saves one citizen report. Attaches it to an open incident of the same category within the merge
-    radius and age (section 4), otherwise creates a new incident. Runs in the caller's transaction."""
+    """Saves one citizen report. A citizen who already has a report on an open complaint within the merge radius (any
+    category) gets 409 already_reported and nothing is inserted. Otherwise the report joins an open complaint of the same
+    category within the radius and age (section 4), or creates a new one. Runs in the caller's transaction."""
     s = get_settings()
     category = ref.category(body.category)
     if category is None:
@@ -253,54 +367,63 @@ async def create_report(db: AsyncSession, user_id: uuid.UUID, body: ReportIn) ->
     media_ids = list(dict.fromkeys(body.media_ids))
     if media_ids:
         owned = await db.scalar(
-            text("SELECT count(*) FROM media WHERE id = ANY(CAST(:ids AS uuid[])) AND uploader_id = :u AND report_id IS NULL"),
+            text("SELECT count(*) FROM media WHERE id = ANY(CAST(:ids AS uuid[])) AND uploader_id = :u AND report_id IS NULL AND incident_id IS NULL"),
             {"ids": [str(m) for m in media_ids], "u": user_id},
         )
         if owned != len(media_ids):
             raise ApiError(422, "invalid_media", "One of the photos was not found. Please add it again.")
 
     severity, flags = rules.assess(category.name, body.problem_type, body.description, [*body.flags, *flags_from_answers(body.answers)])
+    citizen_sev = rules.citizen_severity_for(category.name, body.problem_type, body.description)
     ai_cat: CategoryRef | None = ref.category(body.ai.category) if body.ai and body.ai.category else None
     point = {"lat": body.lat, "lng": body.lng}
 
+    # One citizen's reports are serialised, so two quick taps cannot both pass the duplicate check.
+    await db.execute(text("SELECT pg_advisory_xact_lock(4243, hashtext(:u))"), {"u": str(user_id)})
+    own = await own_open_report(db, user_id, body.lat, body.lng)
+    if own:
+        raise ApiError(409, "already_reported", f"You already reported this ({own.public_id}). You can add a photo to it instead.",
+                       extra={"id": str(own.id), "public_id": own.public_id, "category": own.category, "status": own.status})
+
     # Serialise reports per category so two neighbours reporting at the same moment still merge.
     await db.execute(text("SELECT pg_advisory_xact_lock(4242, :c)"), {"c": category.id})
-    candidate = await db.scalar(text("""
+    candidate = await db.scalar(text(f"""
         SELECT id FROM incidents
-        WHERE category_id = :c AND status <> 'Resolved' AND created_at > now() - make_interval(days => :days)
+        WHERE category_id = :c AND {open_sql('incidents')} AND created_at > now() - make_interval(days => :days)
           AND ST_DWithin(location, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, :radius)
         ORDER BY location <-> ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography
         LIMIT 1"""), {**point, "c": category.id, "days": s.merge_max_age_days, "radius": s.merge_radius_m})
     existing = None
     if candidate:
         # Locked separately: FOR UPDATE on a KNN index scan can fail with "attempted to lock invisible tuple".
-        existing = (await db.execute(text("""
-            SELECT id, public_id, severity::text AS severity, flags,
-                   EXISTS (SELECT 1 FROM reports r WHERE r.incident_id = i.id AND r.user_id = :u)
-                   OR EXISTS (SELECT 1 FROM confirmations f WHERE f.incident_id = i.id AND f.user_id = :u) AS already_counted
-            FROM incidents i WHERE id = :id AND status <> 'Resolved' FOR UPDATE"""), {"id": candidate, "u": user_id})).first()
+        existing = (await db.execute(text(f"""
+            SELECT id, public_id, severity::text AS severity, citizen_severity::text AS citizen_severity, flags,
+                   EXISTS (SELECT 1 FROM confirmations f WHERE f.incident_id = i.id AND f.user_id = :u) AS already_counted
+            FROM incidents i WHERE id = :id AND {open_sql('i')} FOR UPDATE"""), {"id": candidate, "u": user_id})).first()
 
     if existing:
         incident_id, public_id, merged = existing.id, existing.public_id, True
         row = (await db.execute(text("""
             UPDATE incidents SET affected_count = affected_count + :inc, severity = CAST(:sev AS severity_level),
-                   flags = CAST(:flags AS text[]), updated_at = now()
+                   citizen_severity = CAST(:csev AS severity_level), flags = CAST(:flags AS text[]), updated_at = now()
             WHERE id = :id RETURNING affected_count, status::text AS status, severity::text AS severity"""), {
             "id": incident_id, "inc": 0 if existing.already_counted else 1,
-            "sev": rules.raise_to(existing.severity, severity), "flags": rules.merge_flags(list(existing.flags), flags),
+            "sev": rules.raise_to(existing.severity, severity), "csev": rules.raise_to(existing.citizen_severity, citizen_sev),
+            "flags": rules.merge_flags(list(existing.flags), flags),
         })).first()
     else:
         merged = False
         ward_id = await resolve_ward(db, body.lat, body.lng)
         row = (await db.execute(text("""
-            INSERT INTO incidents (public_id, category_id, location, ward_id, address_text, severity, flags)
+            INSERT INTO incidents (public_id, category_id, location, ward_id, address_text, severity, citizen_severity, flags)
             VALUES ('IR-' || to_char(now() AT TIME ZONE 'Asia/Kolkata', 'YYYYMMDD') || '-' || lpad(nextval('incident_public_seq')::text, 5, '0'),
-                    :c, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, :w, :addr, CAST(:sev AS severity_level), CAST(:flags AS text[]))
+                    :c, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, :w, :addr, CAST(:sev AS severity_level), CAST(:csev AS severity_level), CAST(:flags AS text[]))
             RETURNING id, public_id, affected_count, status::text AS status, severity::text AS severity"""), {
-            **point, "c": category.id, "w": ward_id, "addr": body.address_text, "sev": severity, "flags": flags,
+            **point, "c": category.id, "w": ward_id, "addr": body.address_text, "sev": severity, "csev": citizen_sev, "flags": flags,
         })).first()
         incident_id, public_id = row.id, row.public_id
         await db.execute(text("INSERT INTO status_events (incident_id, from_status, to_status, actor_id) VALUES (:i, NULL, 'Reported', :u)"), {"i": incident_id, "u": user_id})
+        await refresh_geo_facts(db, [incident_id])
 
     nlp = rules.extract_nlp(body.description, severity, flags)  # computed here, never trusted from the client
     ai = body.ai
@@ -324,13 +447,24 @@ async def create_report(db: AsyncSession, user_id: uuid.UUID, body: ReportIn) ->
             "area": place.area if place else None, "department": ref.departments.get(category.department_id)}
 
 
-async def history(db: AsyncSession, incident_ids: list[uuid.UUID]) -> dict[uuid.UUID, list[dict]]:
+async def history(db: AsyncSession, incident_ids: list[uuid.UUID], internal: bool = False) -> dict[uuid.UUID, list[dict]]:
+    """Status timeline. A row whose from and to status are equal is an internal note (assigned, scheduled, merged):
+    only the control room sees it (internal=True), together with who did it."""
     out: dict[uuid.UUID, list[dict]] = {i: [] for i in incident_ids}
     if not incident_ids:
         return out
-    rows = await db.execute(text("SELECT incident_id, to_status::text AS status, created_at FROM status_events WHERE incident_id = ANY(CAST(:ids AS uuid[])) ORDER BY created_at, id"), {"ids": [str(i) for i in incident_ids]})
+    rows = await db.execute(text("""
+        SELECT e.incident_id, e.from_status::text AS from_status, e.to_status::text AS status, e.created_at, e.reason, u.name AS actor, u.role::text AS actor_role
+        FROM status_events e LEFT JOIN users u ON u.id = e.actor_id
+        WHERE e.incident_id = ANY(CAST(:ids AS uuid[])) ORDER BY e.created_at, e.id"""), {"ids": [str(i) for i in incident_ids]})
     for r in rows:
-        out[r.incident_id].append({"status": r.status, "at": r.created_at})
+        note = r.from_status == r.status
+        if note and not internal:
+            continue
+        item = {"status": r.status, "at": r.created_at, "reason": r.reason}
+        if internal:
+            item.update(note=note, by=(None if r.actor_role == "citizen" else r.actor), by_role=r.actor_role)
+        out[r.incident_id].append(item)
     return out
 
 
@@ -362,31 +496,3 @@ async def thread(db: AsyncSession, incident_ids: list[uuid.UUID], viewer_id: uui
             "text": r.body, "at": r.created_at,
         })
     return out
-
-
-async def apply_update(db: AsyncSession, actor_id: uuid.UUID, ids: list[uuid.UUID], status: str | None, message: str | None, flags: list[str] | None = None) -> list[uuid.UUID]:
-    """Status change, message and flag edit for one or many incidents, in the caller's transaction.
-    Writes one status_events row per real change. Returns the ids that exist."""
-    rows = (await db.execute(text("SELECT id, status::text AS status FROM incidents WHERE id = ANY(CAST(:ids AS uuid[])) ORDER BY id FOR UPDATE"), {"ids": [str(i) for i in ids]})).all()
-    found = [r.id for r in rows]
-    changed = [r for r in rows if status and r.status != status]
-    if changed:
-        changed_ids = [str(r.id) for r in changed]
-        await db.execute(text("""
-            INSERT INTO status_events (incident_id, from_status, to_status, actor_id)
-            SELECT i.id, i.status, CAST(:st AS issue_status), :a FROM incidents i WHERE i.id = ANY(CAST(:ids AS uuid[]))"""), {"st": status, "a": actor_id, "ids": changed_ids})
-        await db.execute(text("""
-            UPDATE incidents SET status = CAST(:st AS issue_status), updated_at = now(),
-                   resolved_at = CASE WHEN :st = 'Resolved' THEN now() ELSE NULL END
-            WHERE id = ANY(CAST(:ids AS uuid[]))"""), {"st": status, "ids": changed_ids})
-    if flags is not None and found:
-        await db.execute(text("UPDATE incidents SET flags = CAST(:f AS text[]), updated_at = now() WHERE id = ANY(CAST(:ids AS uuid[]))"), {"f": rules.merge_flags(flags), "ids": [str(i) for i in found]})
-    body = (message or "").strip()
-    if body and found:
-        await db.execute(text("""
-            INSERT INTO messages (incident_id, sender_id, recipient_id, body)
-            SELECT id, :a, NULL, :b FROM unnest(CAST(:ids AS uuid[])) AS id"""), {"a": actor_id, "b": body, "ids": [str(i) for i in found]})
-        await db.execute(text("UPDATE incidents SET updated_at = now() WHERE id = ANY(CAST(:ids AS uuid[]))"), {"ids": [str(i) for i in found]})
-    if found:
-        await recompute_priority(db, found)
-    return found

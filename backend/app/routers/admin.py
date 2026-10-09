@@ -10,6 +10,7 @@ from ..errors import ApiError, not_found
 from ..models import AuthorityProfile, RefreshToken, User
 from ..refdata import ref
 from ..schemas import AdminStats, AuthorityOut, DecisionIn
+from ..status import open_sql
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -58,7 +59,7 @@ async def stats(_: Admin, db: Db):
           (SELECT count(*) FROM authority_profiles a JOIN users u ON u.id = a.user_id WHERE u.deleted_at IS NULL AND a.approval = 'rejected') AS rejected,
           (SELECT count(*) FROM users WHERE role = 'citizen' AND deleted_at IS NULL) AS citizens,
           (SELECT count(*) FROM incidents) AS incidents,
-          (SELECT count(*) FROM reports) AS reports"""))).mappings().one()
+          (SELECT count(*) FROM reports WHERE duplicate_of_report_id IS NULL) AS reports"""))).mappings().one()
     return AdminStats(**row)
 
 
@@ -68,17 +69,17 @@ async def overview(_: Admin, db: Db):
     """Higher-authority view: unresolved critical count, per-department open workload, category concentration, top hotspots."""
     from .. import incidents as svc
 
-    crit = await db.scalar(text("SELECT count(*) FROM incidents WHERE status <> 'Resolved' AND priority_score >= 65"))
-    depts = (await db.execute(text("""
-        SELECT d.name AS department, count(*) FILTER (WHERE i.status <> 'Resolved') AS open,
-               count(*) FILTER (WHERE i.status <> 'Resolved' AND i.priority_score >= 65) AS critical,
-               count(*) FILTER (WHERE i.status = 'Resolved') AS resolved
+    crit = await db.scalar(text(f"SELECT count(*) FROM incidents i WHERE {open_sql('i')} AND i.risk >= 12"))
+    depts = (await db.execute(text(f"""
+        SELECT d.name AS department, count(*) FILTER (WHERE {open_sql('i')}) AS open,
+               count(*) FILTER (WHERE {open_sql('i')} AND i.risk >= 12) AS critical,
+               count(*) FILTER (WHERE i.status IN ('Resolved', 'Closed')) AS resolved
         FROM departments d LEFT JOIN categories c ON c.department_id = d.id LEFT JOIN incidents i ON i.category_id = c.id
         GROUP BY d.id, d.name ORDER BY open DESC, d.name"""))).all()
-    cats = (await db.execute(text("""
+    cats = (await db.execute(text(f"""
         SELECT c.name AS category, d.name AS department, count(*) AS open
         FROM incidents i JOIN categories c ON c.id = i.category_id LEFT JOIN departments d ON d.id = c.department_id
-        WHERE i.status <> 'Resolved' GROUP BY c.name, d.name ORDER BY open DESC"""))).all()
+        WHERE {open_sql('i')} GROUP BY c.name, d.name ORDER BY open DESC"""))).all()
     total_open = sum(c.open for c in cats) or 1
     return {
         "unresolved_critical": crit,

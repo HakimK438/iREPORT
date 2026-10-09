@@ -54,7 +54,7 @@ async def main() -> None:
                    CASE WHEN r < 0.04 THEN ARRAY['Live wiring','Near school'] WHEN r < 0.25 THEN ARRAY['Main road'] WHEN r < 0.35 THEN ARRAY['Flood risk'] ELSE '{}'::text[] END,
                    s::issue_status, 1 + floor(random() * 40)::int, c, c, CASE WHEN s = 'Resolved' THEN c + interval '3 days' END
             FROM (SELECT g, random() AS r, now() - random() * interval '90 days' AS c,
-                         (ARRAY['Reported','Reported','Under Review','In Progress','Resolved'])[1 + floor(random() * 5)::int] AS s
+                         (ARRAY['Reported','Reported','Acknowledged','In Progress','Resolved'])[1 + floor(random() * 5)::int] AS s
                   FROM generate_series(1, :n) g) x"""), {"n": args.n})
         await conn.execute(text("""
             INSERT INTO reports (incident_id, user_id, problem_type, created_at)
@@ -67,8 +67,13 @@ async def main() -> None:
             INSERT INTO media (report_id, uploader_id, storage_key, thumb_key, width, height, bytes, created_at)
             SELECT r.id, r.user_id, 'media/lt/' || r.id || '.webp', 'thumbs/lt/' || r.id || '.webp', 1280, 960, 180000, r.created_at
             FROM reports r JOIN incidents i ON i.id = r.incident_id WHERE i.public_id LIKE 'LT-%' AND random() < 0.3"""))
-        await conn.execute(text("""UPDATE incidents i SET priority_score = ireport_priority(i.severity, c.hazard_points, i.flags, i.status, i.created_at, i.affected_count)
+        # risk from the flags and counts the load-test rows carry (no map facts), then the sort key and the due date
+        await conn.execute(text("""UPDATE incidents i SET citizen_severity = i.severity,
+                                      risk = ireport_risk(c.impact, i.severity, 'Main road' = ANY(i.flags), 'Near school' = ANY(i.flags) OR 'Near hospital' = ANY(i.flags),
+                                                          i.affected_count, false, 'Night-time hazard' = ANY(i.flags))
                                    FROM categories c WHERE c.id = i.category_id AND i.public_id LIKE 'LT-%'"""))
+        await conn.execute(text("""UPDATE incidents SET priority_score = ireport_score(risk), due_at = created_at + ireport_sla_hours(risk) * interval '1 hour'
+                                   WHERE public_id LIKE 'LT-%'"""))
     async with engine.connect() as conn:
         await conn.execution_options(isolation_level="AUTOCOMMIT")
         await conn.execute(text("ANALYZE"))

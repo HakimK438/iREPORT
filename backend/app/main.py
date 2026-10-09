@@ -11,7 +11,7 @@ from .ai import pipeline
 from .config import get_settings
 from .db import SessionLocal, engine
 from .models import User
-from .routers import admin, ai, auth, authority, health, incidents, me, reports
+from .routers import admin, ai, analytics, auth, authority, health, incidents, me, reports
 from .security import hash_password
 from .storage import get_storage
 
@@ -72,7 +72,7 @@ def create_app() -> FastAPI:
         return response
 
     api = APIRouter(prefix="/api/v1")
-    for module in (auth, me, admin, ai, reports, incidents, authority, health):
+    for module in (auth, me, admin, ai, reports, incidents, authority, analytics, health):
         api.include_router(module.router)
     app.include_router(api)
     return app

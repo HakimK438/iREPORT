@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from .answers import unknown_answers
 
 Lang = Literal["en", "hi", "mr"]
-StatusName = Literal["Reported", "Under Review", "In Progress", "Resolved"]
+StatusName = Literal["Reported", "Acknowledged", "Scheduled", "In Progress", "Resolved", "Closed", "Reopened", "On Hold", "Rejected", "Duplicate", "Transferred"]
 SeverityName = Literal["Low", "Medium", "High", "Critical"]
 
 FLAGS = ("Live wiring", "Injury reported", "Near school", "Near hospital", "Flood risk", "Main road", "Night-time hazard", "Blocks footpath")
@@ -239,17 +239,35 @@ class MyReport(BaseModel):
 
 
 class AuthorityUpdate(Strict):
+    """One officer action on one complaint. Which extra fields are needed depends on the status (app/workflow.py)."""
     status: StatusName | None = None
     message: str | None = Field(default=None, max_length=1000)
     flags: list[str] | None = Field(default=None, max_length=8)
+    reason: str | None = Field(default=None, max_length=500)             # On Hold, Rejected, Transferred, Reopened
+    duplicate_of: str | None = Field(default=None, max_length=30)         # complaint no. of the complaint this one duplicates
+    category: str | None = Field(default=None, max_length=40)             # Transferred: the correct category
+    assigned_to: uuid.UUID | None = None                                  # assign (or re-assign) an officer
+    scheduled_for: date | None = None                                     # site visit / work date
 
     @field_validator("flags")
     @classmethod
     def known_flags(cls, v: list[str] | None) -> list[str] | None:
         return None if v is None else [f for f in dict.fromkeys(v) if f in FLAGS]
 
+    @field_validator("reason", "duplicate_of", "message")
+    @classmethod
+    def clean_text(cls, v: str | None) -> str | None:
+        return _clean(v)
+
 
 class BulkUpdate(Strict):
+    """Bulk actions: acknowledge, assign, schedule, resolve and message."""
     ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
-    status: StatusName | None = None
+    status: Literal["Acknowledged", "Scheduled", "Resolved"] | None = None
     message: str | None = Field(default=None, max_length=1000)
+    assigned_to: uuid.UUID | None = None
+    scheduled_for: date | None = None
+
+
+class CitizenReopen(Strict):
+    reason: str = Field(min_length=3, max_length=500)

@@ -27,7 +27,8 @@ async def test_analyze_photo_then_report_links_media(client):
     a = r.json()
     assert a["category"] == "Pothole" and a["confidence"] > 0.9 and a["uncertain"] is False and a["not_civic"] is False
     assert [t["category"] for t in a["top3"]][0] == "Pothole" and len(a["top3"]) == 3
-    assert a["severity"] == "High" and "Main road" in a["flags"] and a["explanation"].startswith("The photo resembles a ")
+    # "Main road" is no longer assumed for a pothole: it is checked on the map (authority-v2, DECISIONS.md)
+    assert a["severity"] == "High" and "Main road" not in a["flags"] and a["explanation"].startswith("The photo resembles a ")
     assert a["model_version"] == "img-1.0" and a["source"] == "image" and len(a["media_ids"]) == 1
     assert len(get_storage().objects) == 2  # main + thumbnail, nothing else
     assert all(k.startswith(("media/", "thumbs/")) and k.endswith(".webp") for k in get_storage().objects)
@@ -128,12 +129,12 @@ async def test_cleanup_jobs_and_priority_refresh(client):
     assert row.storage_key == row.thumb_key and list(get_storage().objects) == [row.thumb_key]
 
     async with engine.begin() as conn:
-        await conn.execute(text("UPDATE incidents SET status = 'Reported', created_at = now() - interval '10 days' WHERE id = :i"), {"i": keep["incident_id"]})
-        before = await conn.scalar(text("SELECT priority_score FROM incidents WHERE id = :i"), {"i": keep["incident_id"]})
+        # the hourly job re-scores open complaints: a stale score is corrected (age no longer matters, risk does)
+        await conn.execute(text("UPDATE incidents SET status = 'Reported', priority_score = 0, risk = 1 WHERE id = :i"), {"i": keep["incident_id"]})
     assert await jobs.refresh_priorities() == 1
     async with engine.connect() as conn:
-        after = await conn.scalar(text("SELECT priority_score FROM incidents WHERE id = :i"), {"i": keep["incident_id"]})
-    assert after > before
+        after, risk = (await conn.execute(text("SELECT priority_score, risk FROM incidents WHERE id = :i"), {"i": keep["incident_id"]})).one()
+    assert after > 0 and risk >= 3  # pothole: impact 3 x likelihood 1 at least
 
 
 def test_rules_only_add_flags_and_raise_severity():
@@ -146,7 +147,7 @@ def test_rules_only_add_flags_and_raise_severity():
     assert rules.severity_for("Pothole", "Small", []) == "Low"
     assert rules.severity_for("Pothole", "Small", ["Main road"]) == "Medium"
     sev, flags = rules.assess("Pothole", "Small", None, ["Near hospital"])
-    assert sev == "High" and flags == ["Near hospital", "Main road"]
+    assert sev == "High" and flags == ["Near hospital"]
     assert rules.cue_flags("the current status is pending")[0] == []
     assert rules.cue_flags("railing chhune pe current laga")[0] == ["Live wiring"]
     assert rules.cue_flags("") == ([], False)
