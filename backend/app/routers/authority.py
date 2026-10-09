@@ -35,8 +35,15 @@ def _sort_values(sort: str, row) -> list:
     }[sort]
 
 
-def _filters(ward: str | None, category: str | None, status: str | None, q: str | None, hide_resolved: bool) -> tuple[list[str], dict]:
+def _filters(ward: str | None, category: str | None, status: str | None, q: str | None, hide_resolved: bool,
+             min_priority: int | None = None, flag: str | None = None) -> tuple[list[str], dict]:
     where, params = [], {}
+    if min_priority is not None:  # quick filters: Critical = 65+, High = 48+
+        where.append("i.priority_score >= :minp")
+        params["minp"] = min_priority
+    if flag:
+        where.append(":flag = ANY(i.flags)")
+        params["flag"] = flag
     if ward:
         ward_id = ref.ward_id(ward)
         if ward_id is None:
@@ -76,11 +83,11 @@ def _filters(ward: str | None, category: str | None, status: str | None, q: str 
 async def list_incidents(
     _: Authority, db: Db,
     ward: str | None = None, category: str | None = None, status: str | None = None, q: str | None = Query(None, max_length=100),
-    hide_resolved: bool = False, sort: Literal["priority", "newest", "oldest", "affected"] = "priority",
+    hide_resolved: bool = False, min_priority: int | None = Query(None, ge=0, le=100), flag: str | None = Query(None, max_length=40), sort: Literal["priority", "newest", "oldest", "affected"] = "priority",
     cursor: str | None = None, limit: int = Query(50, ge=1, le=100),
 ):
     cols, direction = SORTS[sort]
-    where, params = _filters(ward, category, status, q, hide_resolved)
+    where, params = _filters(ward, category, status, q, hide_resolved, min_priority, flag)
     after = paging.decode(cursor, len(cols))
     if after:
         op = "<" if direction == "DESC" else ">"

@@ -192,7 +192,9 @@ async def test_authority_list_sort_filter_page_and_stats(client):
     s = (await client.get("/authority/stats", headers=officer["headers"])).json()
     assert (s["total"], s["open"], s["resolved"], s["in_progress"]) == (7, 6, 1, 0)
     assert next(c for c in s["per_category"] if c["category"] == "Streetlight") == {"category": "Streetlight", "total": 5, "open": 5}
-    assert next(w for w in s["per_ward"] if w["area"] == "Malad")["total"] == 2
+    # 0006 added more areas: the garbage point (19.20, 72.85) is now nearest Kandivali, the electrical pair stays in Malad
+    assert next(w for w in s["per_ward"] if w["area"] == "Malad")["total"] == 1
+    assert next(w for w in s["per_ward"] if w["area"] == "Kandivali")["total"] == 1
 
     detail = (await client.get(f"/authority/incidents/{danger['incident_id']}", headers=officer["headers"])).json()
     assert detail["reasons"][0]["label"] == "Critical severity" and len(detail["reporters"]) == 2

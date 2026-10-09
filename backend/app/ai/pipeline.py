@@ -18,6 +18,8 @@ CATEGORIES = ["Pothole", "Road Damage", "Streetlight", "Garbage", "Water Leakage
 NOT_CIVIC = "not_civic"
 IMAGE_WEIGHT, TEXT_WEIGHT = 0.7, 0.3
 DISAGREE_AT = 0.60  # both models at least this sure of different categories
+MISMATCH_AT = 0.60  # a single photo is flagged only when the image model is at least this sure it shows something else
+MERGED = {"Road Damage": "Pothole", "Drainage": "Water Leakage"}  # legacy names count as their merged category
 
 
 @dataclass
@@ -91,11 +93,22 @@ def combine(p_img: dict[str, float] | None, p_txt: dict[str, float] | None, unce
     }
 
 
+def photo_check(index: int, probs: dict[str, float], chosen: str | None) -> dict:
+    """Does this ONE photo look like the category the citizen chose? Only a confident, different answer is a mismatch;
+    "Other" is a catch-all, so it never mismatches. `looks_like` is the model's own top label (or "not_civic")."""
+    top = max(probs, key=lambda k: probs[k])
+    conf = probs[top]
+    norm = lambda c: MERGED.get(c, c)  # noqa: E731
+    mismatch = bool(chosen and chosen != "Other" and conf >= MISMATCH_AT and top != "Other" and norm(top) != norm(chosen))
+    return {"index": index, "looks_like": norm(top), "confidence": round(conf, 4), "matches": not mismatch}
+
+
 def analyze(images: list[Image.Image], text: str | None, problem_type: str | None, chosen_category: str | None, uncertain_below: float) -> dict:
     """images may be empty. A photo whose inference fails is skipped; the others are still averaged."""
     p_img = p_txt = None
     status = {"image": "no_photo" if not images else "unavailable", "text": "no_text"}
     photos_used = 0
+    photo_checks: list[dict] = []  # one entry per photo the image model could judge
     # The image model only knows the classes it was trained on. If the citizen already chose a category it
     # has no data for (e.g. Drainage), its answer would be a guess among the wrong classes: skip it.
     covered = chosen_category is None or chosen_category in models.image.labels if models.image else False
@@ -103,9 +116,11 @@ def analyze(images: list[Image.Image], text: str | None, problem_type: str | Non
         status["image"] = "category_not_covered"
     if images and models.image and covered:
         per_photo = []
-        for im in images:
+        for n, im in enumerate(images):
             try:
-                per_photo.append(models.image.predict(im))
+                probs = models.image.predict(im)
+                per_photo.append(probs)
+                photo_checks.append(photo_check(n, probs, chosen_category))
             except Exception:  # noqa: BLE001
                 log.exception("image inference failed for one photo")
         photos_used = len(per_photo)
@@ -144,6 +159,7 @@ def analyze(images: list[Image.Image], text: str | None, problem_type: str | Non
         image_confidence=round(_top_civic(p_img)[1], 4) if p_img else None,
         text_confidence=round(_top_civic(p_txt)[1], 4) if p_txt else None,
         image_model_active=models.image is not None,
+        photo_checks=photo_checks,
     )
     if status["image"] == "error" or status["text"] == "error":
         result["uncertain"] = True

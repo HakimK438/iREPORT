@@ -8,3 +8,7 @@
 - Real category photos: place the six files in `public/categories/` (emoji cards show until then).
 - Hindi/Marathi: authority/admin screens and AuthPage are English only.
 - Nominatim search is called from the browser; add a backend proxy if usage grows.
+- Multi-problem reports (up to 3 categories → one report each) and the new Photo & place step, map pin, voice box and review card were built and type-checked/built, but NOT clicked through in a real browser (voice needs Chrome + microphone; the map needs internet).
+- Example photos: only Pothole, Streetlight and Other have dataset photos the model is >0.85 sure about in the 5 picked; Water Leakage and Electrical have no dataset images at all. Re-run `python -m scripts.seed_dataset_photos <images dir>` to add more (it refuses if examples already exist).
+- Hindi/Marathi: wording changed to शिकायत / तक्रार and authority + admin headings translated; still AI-written, needs a native-speaker check (docs/I18N_REVIEW.md). Authority detail panel body, AuthPage and FAQ are still English.
+- Area names come from the nearest of 29 seeded centres (migration 0006); real ward polygons (scripts/load_wards.py) would be exact. The exact pin + street label are stored regardless.

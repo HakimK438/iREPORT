@@ -68,7 +68,7 @@ export interface Msg { id: number; from: "authority" | "citizen"; by: string; te
 export interface HistoryEvent { status: Status; at: string }
 export interface Page<T> { items: T[]; next_cursor: string | null; total?: number | null }
 
-export interface IncidentPublic { id: string; public_id: string; title: string; category: string; area: string | null; address_text: string | null; severity: Severity; status: Status; flags: string[]; affected_count: number; created_at: string; updated_at: string; distance_m?: number; thumb_url: string | null; confirmed_by_me?: boolean; reported_by_me?: boolean }
+export interface IncidentPublic { id: string; public_id: string; title: string; category: string; area: string | null; address_text: string | null; severity: Severity; status: Status; flags: string[]; affected_count: number; created_at: string; updated_at: string; distance_m?: number; thumb_url: string | null; sample_confidence?: number | null; confirmed_by_me?: boolean; reported_by_me?: boolean }
 export interface Nlp { duration: { text: string; days: number } | null; obstruction: string | null; hazard: string[] | null; urgency: string | null; flags: string[] }
 export interface AiSummary { category: string | null; confidence: number | null; source: string | null; agreement: "agree" | "disagree" | null; disagreement: { image: string; text: string } | null; user_corrected: boolean }
 export interface MyReport { department?: string | null; citizen_message?: string | null; location_source?: string | null; ai?: { category: string | null; confidence: number | null; source: string | null; user_corrected: boolean }; report_id: string; incident_id: string; public_id: string; title: string; category: string; area: string | null; address_text: string | null; severity: Severity; status: Status; affected_count: number; created_at: string; updated_at: string; image_url: string | null; thumb_url: string | null; history: HistoryEvent[]; messages: Msg[] }
@@ -87,11 +87,14 @@ export interface AuthorityStats { total: number; open: number; in_progress: numb
 export interface AdminAuthority { id: string; name: string; email: string; phone: string | null; area: string | null; department: string | null; employee_id: string; approval: "pending" | "approved" | "rejected"; created_at: string; decided_at: string | null }
 export interface AdminStats { pending: number; approved: number; rejected: number; citizens: number; incidents: number; reports: number }
 export interface PhotoQuality { label: "good" | "blurry" | "dark" | "low resolution"; width: number; height: number; brightness: number; sharpness: number }
+/** One photo judged against the category the citizen chose. `matches: false` only when the image model is confident it shows something else. */
+export interface PhotoCheck { index: number; media_id: string; thumb_url: string; looks_like: string; confidence: number; matches: boolean }
 export interface Analysis {
   media_ids: string[]; thumb_urls: string[]; category: string | null; confidence: number | null; top3: { category: string; confidence: number }[]; uncertain: boolean; not_civic: boolean;
   disagreement: { image: string; text: string } | null; agreement: "agree" | "disagree" | null; severity: Severity | null; flags: string[]; explanation: string | null;
   gps_suggestion: { lat: number; lng: number } | null; model_version: string | null; source: "image" | "text" | "image+text" | "none";
   image_confidence: number | null; text_confidence: number | null; image_model_active: boolean; department: string | null;
+  photo_checks?: PhotoCheck[];
   ai_available: boolean; models: { image: string; text: string }; photo_quality: PhotoQuality[]; photo_errors: { index: number; code: string; message: string }[]; nlp: Nlp | null;
 }
 export interface ReportCreated { report_id: string; incident_id: string; incident_public_id: string; merged: boolean; affected_count: number; severity: Severity; status: Status; area: string | null; department: string | null }

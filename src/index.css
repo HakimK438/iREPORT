@@ -315,3 +315,99 @@ ul.plain{margin:0;padding-left:18px;font-size:13px}
 @media(prefers-reduced-motion:reduce){.cat-card,.cat-media img,.cat-cta{transition:none;animation:none}.cat-card:hover,.cat-card:hover .cat-media img,.cat-card:hover .cat-cta{transform:none}}
 /* The water-leakage artwork carries a stock-photo watermark along its bottom edge: crop that strip away. */
 .tone-blue .cat-media img{height:118%}
+
+/* ---- report flow v2: 5 steps, multi-problem, merged photo + place, professional review ---- */
+.progress{grid-template-columns:repeat(5,1fr)}
+.progress b{font-size:10px}
+.flow-categories button .pick-badge{position:absolute;right:8px;top:8px;background:var(--green);color:#fff;font-style:normal;font-size:10px;font-weight:800;border-radius:99px;padding:2px 8px}
+.q-group{margin-bottom:10px}.q-cat{display:flex;align-items:center;gap:8px;font:800 16px "Manrope";margin:14px 0 4px}.q-cat span{background:var(--green2);color:var(--green);border-radius:99px;padding:2px 9px;font-size:11px}
+.describe-box{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;margin:6px 0 18px}
+.describe-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}.describe-head label{font-weight:700;font-size:14px}
+.describe-box textarea{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;font:inherit;resize:vertical;min-height:70px}
+.voice-btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--green);color:var(--green);background:#fff;border-radius:99px;padding:7px 14px;font-weight:700;font-size:13px}
+.voice-btn.recording{background:#fff5f4;border-color:var(--red);color:var(--red);animation:record 1s infinite}
+.upload-drop{width:100%;height:92px;border:2px dashed #b9c8bf;background:#fff;border-radius:14px;display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:12px;color:var(--green)}
+.upload-drop:disabled{opacity:.5}.upload-drop small{color:var(--muted)}
+.photo-strip{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.photo-strip .upload-preview{height:150px;margin:0}
+.shot-cat{position:absolute;left:8px;right:8px;top:8px;max-width:calc(100% - 90px);border:0;border-radius:8px;padding:5px;font-size:11px;background:#fff}
+.loc-title{display:flex;align-items:center;gap:7px;font:800 18px "Manrope";margin:22px 0 2px}
+.pick-map{height:300px;border-radius:14px;overflow:hidden;margin:12px 0;border:1px solid var(--line);cursor:crosshair}
+.pin-icon span{display:block;width:26px;height:26px;background:var(--red);border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 8px rgba(0,0,0,.4)}
+.location-details{grid-template-columns:1fr 1fr}
+.rv-extra{background:#fff;border:1px dashed var(--green);border-radius:14px;padding:12px 14px;margin:12px 0}.rv-extra h3{font:800 14px "Manrope";margin:0 0 6px}.rv-extra ul{list-style:none;margin:0 0 6px;padding:0}.rv-extra li{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:4px 0;border-top:1px solid var(--line)}.rv-extra li span{color:var(--muted)}
+.success-screen .report-id{margin:10px 0;grid-template-columns:1fr auto}.success-screen .report-id p{grid-column:span 2;margin:4px 0 0;font-size:12px;color:var(--muted)}
+/* AI analysis card */
+.ai-pro{padding:0;overflow:hidden;border-color:#cfe0d6}
+.ai-head{display:flex;align-items:center;gap:12px;padding:14px 16px;background:linear-gradient(120deg,#0f5c46,#1c8c6a);color:#fff}
+.ai-head h3{color:#fff;margin:0;font:800 16px "Manrope"}.ai-head small{color:#d6efe5;font-size:12px}.ai-head>div:nth-child(2){flex:1}
+.ai-badge{width:34px;height:34px;border-radius:10px;background:rgba(255,255,255,.18);display:grid;place-items:center}
+.ai-ring{--p:0;width:58px;height:58px;border-radius:50%;background:conic-gradient(#fff calc(var(--p)*1%),rgba(255,255,255,.25) 0);display:grid;place-items:center;position:relative}
+.ai-ring:before{content:"";position:absolute;inset:6px;border-radius:50%;background:#14785a}.ai-ring.low:before{background:#9a5a0a}.ai-ring b{position:relative;font-size:14px}
+.ai-pro>*:not(.ai-head){margin-left:16px;margin-right:16px}.ai-pro>.ai-head+*{margin-top:14px}.ai-pro>:last-child{margin-bottom:14px}
+.ai-main small{color:var(--muted);font-weight:600}.ai-main>b{display:block;font:800 22px "Manrope";margin:2px 0 8px}
+.ai-chips{display:flex;flex-wrap:wrap;gap:6px}.ai-chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;border-radius:99px;padding:4px 10px;background:#eef1ee}.ai-chip.ok{background:#e3f4ea;color:#14663f}.ai-chip.warn{background:#fff1da;color:#8a4e0a}
+.ai-bars{display:grid;gap:7px;margin-top:12px}.ai-bars>div{display:grid;grid-template-columns:110px 1fr 42px;align-items:center;gap:8px;font-size:12px}.ai-bars i{height:8px;border-radius:99px;background:#e9eeea;overflow:hidden;display:block}.ai-bars u{display:block;height:100%;background:var(--green);border-radius:99px;transition:width .4s}.ai-bars b{text-align:right}
+.ai-evidence{list-style:none;padding:0;margin-top:12px;margin-bottom:0;display:grid;gap:8px}.ai-evidence li{font-size:13px;line-height:1.45;background:#f6f9f7;border-left:3px solid var(--green);border-radius:8px;padding:8px 10px}.ai-evidence li span{display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:2px}
+.ai-loading{display:flex;align-items:center;gap:10px;color:var(--muted)}.ai-loading i{width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+@media(max-width:640px){.ai-bars>div{grid-template-columns:80px 1fr 38px}.location-details{grid-template-columns:1fr}}
+/* authority: how it works, where, example photos */
+.ad-how{background:#f2f8f5;border:1px solid #cfe0d6;border-radius:14px;padding:14px 18px;margin:22px 0 18px}.ad-how summary{display:flex;align-items:center;gap:8px;font:800 16px "Manrope";cursor:pointer;color:var(--green)}
+.ad-how p{font-size:13.5px;line-height:1.55;margin:10px 0}.how-steps{margin:6px 0 10px;padding-left:0;list-style:none;display:grid;gap:6px}.how-steps li{background:#fff;border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:13px}.how-ai{background:#fff;border-radius:10px;padding:8px 12px}
+.ad-where{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:12.5px;margin-top:6px;color:var(--ink)}
+.ad-why{display:block;margin-top:4px}
+.ad-list{display:grid;gap:12px}
+.ad-item{border-radius:14px}
+.chip.sample,.sample-badge{background:#ede7fb;color:#4b2f8f;font-weight:600}
+.sample-badge{display:block;font-size:11px;border-radius:8px;padding:4px 8px;margin:0 0 8px;width:fit-content}
+.sample-note{margin-top:14px}
+
+/* ---- category photo fallback, authority cards, duplicate + mismatch panels, how-it-works ---- */
+.cat-photo{display:inline-grid;place-items:center;overflow:hidden;border-radius:12px;background:#eef1ee;color:var(--green);position:relative}
+.cat-photo img{width:100%;height:100%;object-fit:cover;display:block}
+.cat-photo small{position:absolute;left:0;right:0;bottom:0;padding:4px 8px;background:rgba(0,0,0,.55);color:#fff;font-size:11px}
+.cat-photo.sm{width:44px;height:44px;border-radius:10px;flex:none}
+.cat-dot{width:22px;height:22px;border-radius:50%;vertical-align:middle;margin-right:5px;overflow:hidden;display:inline-grid}
+.hot-cat{display:inline-flex;align-items:center;margin-right:10px}
+.ad-detail-media{display:grid;gap:8px;align-content:start}
+.ad-detail-media>img,.ad-detail-media>.cat-photo{width:100%;height:190px;border-radius:12px;object-fit:cover}
+.ad-thumbs{display:flex;gap:6px}.ad-thumbs button{border:2px solid transparent;border-radius:8px;padding:0;overflow:hidden;width:56px;height:44px;background:none}.ad-thumbs button.on{border-color:var(--green)}.ad-thumbs img{width:100%;height:100%;object-fit:cover}
+.attention{display:grid;grid-template-columns:1.6fr repeat(3,1fr);gap:12px;align-items:center;background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:14px}
+.attention.hot{border-color:#e7b3ae;background:#fff7f6}.attention h2{font:800 18px "Manrope";margin:0 0 4px}.attention p{margin:0;color:var(--muted);font-size:14px}
+.att-num{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px;text-align:center;display:grid;gap:2px}.att-num b{font:800 28px "Manrope"}.att-num span{font-size:12px;color:var(--muted)}.att-num:hover{border-color:var(--green)}
+.quick{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0 4px}.quick span{font-size:13px;color:var(--muted)}.quick button{border:1px solid var(--line);background:#fff;border-radius:999px;padding:7px 14px;font-size:13px}.quick button.active{background:var(--green);color:#fff;border-color:var(--green)}
+.ad-item.card-red{border-left:5px solid var(--red)}.ad-item.card-amber{border-left:5px solid #e0a02b}.ad-item.card-green{border-left:5px solid #4aa585}
+.ad-row{align-items:flex-start}
+.ad-media{position:relative;width:104px;height:86px;flex:none}.ad-media>img,.ad-media>.cat-photo{width:100%;height:100%;border-radius:12px;object-fit:cover}
+.ad-media .prio{position:absolute;left:-6px;top:-6px;transform:scale(.82);transform-origin:top left;box-shadow:0 4px 12px rgba(0,0,0,.18)}
+.facts{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}.fact{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;background:#f1f4f2;border-radius:999px;padding:4px 10px;font-style:normal}.fact.red{background:#fde8e6;color:#9b2a22;font-weight:700}.fact.flag{background:#fde8e6;color:#9b2a22}
+.next-line{display:block;font-size:13.5px;background:#eef7f2;border-radius:8px;padding:6px 10px;margin:4px 0}
+.ad-side{display:grid;gap:8px;justify-items:end;min-width:150px}.quick-act{display:grid;gap:6px;width:100%}
+.glance{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.glance>div{background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;display:grid;gap:2px}.glance b{font:800 22px "Manrope"}.glance b.small-b{font-size:14px}.glance span{font-size:12px;color:var(--muted)}
+.glance .gl-red,.next-step.gl-red{background:#fde8e6;border-color:#e7b3ae}.glance .gl-amber,.next-step.gl-amber{background:#fff3df;border-color:#ecc88a}
+.next-step{display:flex;gap:10px;align-items:center;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin:10px 0;background:#eef7f2}.next-step small{display:block;color:var(--muted)}
+.timeline{list-style:none;padding:0;margin:0;display:grid;gap:6px}.timeline li{display:flex;justify-content:space-between;background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px 10px}
+.cat-list{list-style:none;padding:0}.cat-list li{display:flex;gap:10px;align-items:center;margin:6px 0}
+.md-card .cat-photo.sm{margin-right:4px}
+.mm-panel,.dup-card{border:1px solid #ecc88a;background:#fff8ea;border-radius:14px;padding:14px;margin:14px 0;display:grid;gap:10px}
+.dup-card{border-color:#9fcdb9;background:#eef7f2}.mm-panel h3,.dup-card h3{margin:0;display:flex;gap:8px;align-items:center;font:800 16px "Manrope"}.mm-panel p,.dup-card p{margin:0}
+.mm-item{display:flex;gap:12px;align-items:flex-start;background:#fff;border-radius:12px;padding:10px}.mm-item img{width:84px;height:68px;object-fit:cover;border-radius:8px}.mm-item small{display:block;color:var(--muted)}.mm-actions,.dup-actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.dup-item{background:#fff;border-radius:10px;padding:10px;display:grid;gap:2px}.dup-item small{color:var(--muted)}
+.rv-shot{position:relative;display:inline-block}.rv-shot.skipped img{opacity:.35;filter:grayscale(1)}.rv-shot em{position:absolute;left:4px;bottom:4px;background:#9b2a22;color:#fff;font-size:11px;padding:2px 6px;border-radius:6px;font-style:normal}
+.how-section{padding:60px 0}.how-guide h2{font:800 clamp(28px,4vw,42px)/1.1 "Manrope";margin:6px 0}.how-sub{color:var(--muted);max-width:640px}
+.how-grid{list-style:none;padding:0;margin:26px 0;display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.how-grid li{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px;display:grid;gap:8px;align-content:start}.how-grid p{margin:0;color:var(--muted);line-height:1.55}.how-ico{width:42px;height:42px;border-radius:12px;background:var(--green2);color:var(--green);display:grid;place-items:center}
+.how-cols{display:grid;grid-template-columns:1.2fr 1fr;gap:20px}.how-cols>div{background:#fff;border:1px solid var(--line);border-radius:16px;padding:18px}.how-cols h3{font:800 17px "Manrope";margin:0 0 10px}.how-cols ul{padding-left:18px;display:grid;gap:8px;margin:0;line-height:1.5}
+.how-status{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px}.how-status span{background:var(--green2);color:var(--green);border-radius:999px;padding:5px 12px;font-size:13px;font-weight:700}.how-status i{width:18px;height:2px;background:#9fcdb9}
+@media(max-width:900px){.attention{grid-template-columns:1fr 1fr 1fr}.attention>div:first-child{grid-column:1/-1}.glance{grid-template-columns:1fr 1fr}.how-grid{grid-template-columns:1fr}.how-cols{grid-template-columns:1fr}.ad-row{flex-wrap:wrap}.ad-side{justify-items:start;min-width:0;width:100%}.ad-media{width:84px;height:72px}}
+
+/* layout fixes: detail grid must not grow with its content */
+.ad-detail{grid-template-columns:minmax(0,240px) minmax(0,1fr)}.ad-detail-media,.ad-detail-body{min-width:0}
+.ad-detail-media>img,.ad-detail-media>.cat-photo{max-width:100%}
+.ad-thumbs{flex-wrap:wrap}.ad-detail-body>small{display:block;overflow-wrap:anywhere}
+.glance>div{min-width:0}.glance b{font-size:20px;line-height:1.15;overflow-wrap:anywhere}
+.md-drawer-head{display:flex;gap:12px;align-items:flex-start;justify-content:space-between}.md-drawer-head>div{min-width:0;display:grid;gap:6px;justify-items:start}.md-drawer-head h2{margin:0;overflow-wrap:anywhere}
+.md-drawer,.md-drawer *{min-width:0}.md-drawer .ad-detail{padding:14px}
+.ad-reasons{display:flex;flex-wrap:wrap;gap:6px}.ad-intel-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px}.ad-intel-grid iframe{width:100%}
+.timeline li{gap:10px;align-items:baseline}.timeline small{white-space:nowrap}
+.ad-main{min-width:0;flex:1;text-align:left}.ad-main>*{overflow-wrap:anywhere}
+@media(max-width:900px){.ad-detail{grid-template-columns:minmax(0,1fr)}.md-drawer{width:100vw}}

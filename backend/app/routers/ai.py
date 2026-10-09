@@ -72,9 +72,13 @@ async def analyze(
         result = pipeline.combine(None, None, s.ai_uncertain_below)
         result.update(severity=None, flags=[], explanation=None, model_version=None, source="none", inference_ms=None,
                       ai_available=False, models={"image": "error", "text": "error"}, nlp=None,
-                      image_confidence=None, text_confidence=None, image_model_active=pipeline.models.image is not None)
+                      image_confidence=None, text_confidence=None, image_model_active=pipeline.models.image is not None, photo_checks=[])
     basis = result.get("category") or category
     cat = ref.category(basis) if basis else None
+    # Tie each per-photo check to the stored photo so the client can drop or move the ones that do not match.
+    for chk in result.get("photo_checks", []):
+        chk["media_id"] = media_ids[chk["index"]]
+        chk["thumb_url"] = thumbs[chk["index"]]
     gps = next((p.gps for p in processed if p.gps), None)
     result.update(
         department=ref.departments.get(cat.department_id) if cat else None,

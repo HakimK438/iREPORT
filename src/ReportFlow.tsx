@@ -2,23 +2,22 @@ import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Icon, type IconName } from "./Icon";
 import { Brand, categories, categoryLabel, homeCards, MERGED_CATEGORY } from "./brand";
-import { analyze, api, ApiError, type Analysis, type ReportCreated } from "./api";
+import { analyze, api, ApiError, type Analysis, type IncidentPublic, type PhotoCheck, type ReportCreated } from "./api";
 import { compressPhoto, PhotoTooLargeError } from "./compress";
-import { AREA_CENTRES, AREAS } from "./store";
-import { tr, type Lang, type StrKey } from "./i18n";
+import LocationPicker from "./LocationPicker";
+import { statusName, tr, type Lang, type StrKey } from "./i18n";
 import { QUESTIONS, fromAnswers, optLabel, type Answers } from "./questions";
 
-type Shot = { key: string; blob: Blob; url: string };
+type Shot = { key: string; blob: Blob; url: string; cat: string };
 type Ai = { phase: "idle" } | { phase: "loading"; progress: number } | { phase: "done"; result: Analysis } | { phase: "failed"; message: string };
 /** The incident location. Always chosen in this flow (photo GPS, device GPS or a manual pick), never the profile area. */
 type Spot = { lat: number; lng: number; source: "photo" | "gps" | "manual"; label?: string };
-type Hit = { lat: number; lng: number; name: string };
 
 const SPEECH_LANG: Record<Lang, string> = { en: "en-IN", hi: "hi-IN", mr: "mr-IN" };
-const MAX_PHOTOS = 3;
-const STEP_KEYS: StrKey[] = ["stepProblem", "stepQuestions", "stepPhoto", "stepLocation", "stepReview", "stepDone"];
+const MAX_PHOTOS = 3, MAX_CATEGORIES = 3;
+const STEP_KEYS: StrKey[] = ["stepProblem", "stepQuestions", "stepPhotoLoc", "stepReview", "stepDone"];
 
-type Recognition = { lang: string; interimResults: boolean; continuous: boolean; start: () => void; stop: () => void; onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null; onend: (() => void) | null; onerror: (() => void) | null };
+type Recognition = { lang: string; interimResults: boolean; continuous: boolean; start: () => void; stop: () => void; onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal?: boolean }> }) => void) | null; onend: (() => void) | null; onerror: ((e: { error?: string }) => void) | null };
 const SpeechRecognitionImpl = (window as unknown as { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition }).SpeechRecognition
   ?? (window as unknown as { webkitSpeechRecognition?: new () => Recognition }).webkitSpeechRecognition;
 
@@ -39,11 +38,6 @@ const CAT_HINT: Record<string, Record<Lang, string>> = {
 /** Merged legacy names (Road Damage, Drainage) resolve to their citizen-facing category. */
 const catName = (lang: Lang, name: string) => (lang === "en" ? categoryLabel(name) : CAT_NAME[MERGED_CATEGORY[name] ?? name]?.[lang] ?? name);
 
-function mapSrc({ lat, lng }: { lat: number; lng: number }) {
-  const dLat = 0.0175, dLng = 0.0195;
-  return `https://www.openstreetmap.org/export/embed.html?bbox=${(lng - dLng).toFixed(4)}%2C${(lat - dLat).toFixed(4)}%2C${(lng + dLng).toFixed(4)}%2C${(lat + dLat).toFixed(4)}&layer=mapnik&marker=${lat.toFixed(5)}%2C${lng.toFixed(5)}`;
-}
-
 function Tag({ kind, lang }: { kind: "ml" | "rule" | "gis" | "you"; lang: Lang }) {
   const key: StrKey = kind === "ml" ? "tagMl" : kind === "rule" ? "tagRule" : kind === "gis" ? "tagGis" : "tagYou";
   return <em className={`src-tag src-${kind}`}>{tr(lang, key)}</em>;
@@ -58,18 +52,26 @@ function CategoryThumb({ name, icon }: { name: string; icon: IconName }) {
 
 export default function ReportFlow({ open, close, discard, done, lang, initialCategory }: { open: boolean; close: () => void; discard: () => void; done: (created: ReportCreated) => void; lang: Lang; initialCategory?: string }) {
   const [step, setStep] = useState(initialCategory ? 2 : 1);
-  const [category, setCategory] = useState<string | null>(initialCategory ?? null), [answers, setAnswers] = useState<Answers>({});
+  /* Several problems can be reported at once: the first is the main one, each extra becomes its own report (own team, own priority). */
+  const [selected, setSelected] = useState<string[]>(initialCategory ? [initialCategory] : []), [answersBy, setAnswersBy] = useState<Record<string, Answers>>({});
   const [shots, setShots] = useState<Shot[]>([]), [photoError, setPhotoError] = useState(""), [busyPhotos, setBusyPhotos] = useState(0);
-  const [description, setDescription] = useState(""), [recording, setRecording] = useState(false), [voiceNote, setVoiceNote] = useState("");
+  const [description, setDescription] = useState(""), [recording, setRecording] = useState(false), [voiceNote, setVoiceNote] = useState(""), [heard, setHeard] = useState("");
   const [spot, setSpot] = useState<Spot | null>(null), [landmark, setLandmark] = useState("");
   const [locating, setLocating] = useState(false), [locError, setLocError] = useState("");
-  const [query, setQuery] = useState(""), [hits, setHits] = useState<Hit[]>([]), [searching, setSearching] = useState(false);
   const [ai, setAi] = useState<Ai>({ phase: "idle" }), [finalCategory, setFinalCategory] = useState<string | null>(null), [pickingCategory, setPickingCategory] = useState(false);
   const [message, setMessage] = useState(""), [consent, setConsent] = useState(true), [submitting, setSubmitting] = useState(false), [submitError, setSubmitError] = useState("");
-  const [created, setCreated] = useState<ReportCreated | null>(null);
+  const [created, setCreated] = useState<ReportCreated[]>([]);
+  /* Photo vs category: photos the model is sure show something else are NOT attached unless the citizen keeps them. */
+  const [keepPhotos, setKeepPhotos] = useState<string[]>([]), [mmPicking, setMmPicking] = useState(false);
+  /* Same problem within 50 m: null = not decided yet, "raise" = file my own report, "upvoted" = confirmed the existing one. */
+  const [dup, setDup] = useState<null | "raise" | "upvoted">(null), [upvoting, setUpvoting] = useState(false), [dupError, setDupError] = useState("");
+  const wantVoice = useRef(false);
   const recRef = useRef<Recognition | null>(null), abortRef = useRef<AbortController | null>(null), runRef = useRef(0), sigRef = useRef(""), spotRef = useRef<Spot | null>(null);
-  const cameraRef = useRef<HTMLInputElement>(null), uploadRef = useRef<HTMLInputElement>(null);
+  const autoLandmark = useRef(""), uploadRef = useRef<HTMLInputElement>(null), geoRun = useRef(0);
   spotRef.current = spot;
+
+  const category = selected[0] ?? null, extras = selected.slice(1);
+  const answers = (category && answersBy[category]) || {};
 
   /* Escape and the close button only hide the flow: the draft (answers, photos, location, AI result) stays in memory. */
   useEffect(() => {
@@ -82,20 +84,28 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
   }, [open, close]);
   const shotsRef = useRef(shots);
   shotsRef.current = shots;
-  useEffect(() => () => { shotsRef.current.forEach(s => URL.revokeObjectURL(s.url)); recRef.current?.stop(); abortRef.current?.abort(); }, []);
+  useEffect(() => () => { shotsRef.current.forEach(s => URL.revokeObjectURL(s.url)); wantVoice.current = false; recRef.current?.stop(); abortRef.current?.abort(); }, []);
 
   /* The quick answers belong to the category chosen in step 1; if the citizen switches to another category (for example the AI suggestion) they no longer apply. */
   const sameCategory = !finalCategory || finalCategory === category;
   const mapped = useMemo(() => (category && sameCategory ? fromAnswers(category, answers) : { problem: "Damaged", flags: [] as string[], addons: [] as string[] }), [category, answers, sameCategory]);
   const problem = mapped.problem;
-  const questions = category ? QUESTIONS[category] ?? [] : [];
   const fullText = [description.trim(), ...mapped.addons].filter(Boolean).join(" ").slice(0, 500);
+  const mainShots = shots.filter(s => s.cat === category);
   const result = ai.phase === "done" ? ai.result : null;
   const effective = finalCategory ?? category ?? "Other";
-  const signature = () => JSON.stringify([shots.map(s => s.key), fullText, category, problem]);
+  const signature = () => JSON.stringify([mainShots.map(s => s.key), fullText, category, problem]);
 
-  const next = () => setStep(s => Math.min(6, s + 1));
+  const next = () => setStep(s => Math.min(5, s + 1));
   const back = () => { if (step === 1) close(); else setStep(s => s - 1); };
+
+  const toggleCategory = (name: string) => {
+    if (selected.includes(name)) {
+      const rest = selected.filter(c => c !== name);
+      setShots(sh => sh.map(x => (x.cat === name ? { ...x, cat: rest[0] ?? x.cat } : x))); // photos of a removed problem move to the main one
+      setSelected(rest);
+    } else if (selected.length < MAX_CATEGORIES) setSelected([...selected, name]);
+  };
 
   /* ---------- evidence ---------- */
   const addFiles = async (e: ChangeEvent<HTMLInputElement>) => {
@@ -106,30 +116,57 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
       setBusyPhotos(n => n + 1);
       try {
         const blob = await compressPhoto(file);
-        setShots(list => list.length >= MAX_PHOTOS ? list : [...list, { key: `${Date.now()}-${Math.random()}`, blob, url: URL.createObjectURL(blob) }]);
+        setShots(list => list.length >= MAX_PHOTOS ? list : [...list, { key: `${Date.now()}-${Math.random()}`, blob, url: URL.createObjectURL(blob), cat: selected[0] ?? "Other" }]);
       } catch (err) {
-        setPhotoError(err instanceof PhotoTooLargeError ? err.message : "This photo could not be read. Please pick another photo.");
+        setPhotoError(err instanceof PhotoTooLargeError ? err.message : tr(lang, "photoUnreadable"));
       } finally {
         setBusyPhotos(n => n - 1);
       }
     }
   };
   const removeShot = (key: string) => setShots(list => { const s = list.find(x => x.key === key); if (s) URL.revokeObjectURL(s.url); return list.filter(x => x.key !== key); });
+  const assignShot = (key: string, cat: string) => setShots(list => list.map(x => (x.key === key ? { ...x, cat } : x)));
 
+  /* Voice: the spoken words are written into the description box live, so the citizen can see and fix them.
+     Continuous mode keeps listening through short pauses; it restarts itself if the browser ends a session on its own,
+     and stops for good on the button, on a real error, or when the flow is hidden. */
+  const stopVoice = () => { wantVoice.current = false; try { recRef.current?.stop(); } catch { /* already stopped */ } recRef.current = null; setRecording(false); };
+  const descRef = useRef(description);
+  descRef.current = description;
   const toggleVoice = () => {
-    if (recording) { recRef.current?.stop(); return; }
-    if (!SpeechRecognitionImpl) { setVoiceNote("Voice input is not supported in this browser. Please type instead."); document.getElementById("report-description")?.focus(); return; }
-    const rec = new SpeechRecognitionImpl();
-    rec.lang = SPEECH_LANG[lang]; rec.interimResults = true; rec.continuous = false;
-    const before = description ? `${description.trim()} ` : "";
-    rec.onresult = ev => setDescription((before + Array.from(ev.results).map(r => r[0].transcript).join(" ")).slice(0, 500)); // the spoken words become the description
-    rec.onend = () => setRecording(false);
-    rec.onerror = () => { setRecording(false); setVoiceNote("Could not hear you. Please try again or type instead."); };
-    recRef.current = rec;
-    setVoiceNote("");
-    setRecording(true);
-    rec.start();
+    if (recording) { stopVoice(); return; }
+    if (!SpeechRecognitionImpl) { setVoiceNote(tr(lang, "voiceUnsupported")); document.getElementById("report-description")?.focus(); return; }
+    wantVoice.current = true;
+    setVoiceNote(""); setHeard("");
+    const begin = () => {
+      const rec = new SpeechRecognitionImpl();
+      rec.lang = SPEECH_LANG[lang]; rec.interimResults = true; rec.continuous = true;
+      const base = descRef.current ? `${descRef.current.trim()} ` : ""; // text already in the box when this session started
+      rec.onresult = ev => {
+        const parts = Array.from(ev.results);
+        const finals = parts.filter(r => r.isFinal).map(r => r[0].transcript.trim()).join(" ");
+        const interim = parts.filter(r => !r.isFinal).map(r => r[0].transcript.trim()).join(" ");
+        const said = [finals, interim].filter(Boolean).join(" ");
+        setHeard(said);
+        setDescription((base + said).slice(0, 500));
+      };
+      rec.onend = () => {
+        if (!wantVoice.current) { setRecording(false); return; }
+        window.setTimeout(() => { if (!wantVoice.current) return; try { begin(); } catch { stopVoice(); } }, 150); // the browser ended the session by itself: continue
+      };
+      rec.onerror = e => {
+        const code = e?.error;
+        if (code === "aborted") return;
+        stopVoice();
+        setVoiceNote(tr(lang, code === "not-allowed" || code === "service-not-allowed" ? "voiceBlocked" : code === "no-speech" ? "voiceNoSpeech" : code === "network" ? "voiceNetwork" : code === "audio-capture" ? "voiceNoMic" : "voiceError"));
+      };
+      recRef.current = rec;
+      rec.start();
+    };
+    try { begin(); setRecording(true); } catch { stopVoice(); setVoiceNote(tr(lang, "voiceError")); }
   };
+  // Hiding the flow or leaving the description step must not leave the microphone open.
+  useEffect(() => { if (!open || step !== 2) stopVoice(); }, [open, step]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ---------- AI (runs once per distinct evidence; Back/Next never re-uploads the same photos) ---------- */
   const runAnalysis = async (force = false) => {
@@ -142,7 +179,7 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
     setAi({ phase: "loading", progress: 0 });
     setFinalCategory(null);
     const form = new FormData();
-    shots.forEach((s, i) => form.append("photos", s.blob, `photo-${i + 1}.${s.blob.type === "image/webp" ? "webp" : "jpg"}`));
+    mainShots.forEach((s, i) => form.append("photos", s.blob, `photo-${i + 1}.${s.blob.type === "image/webp" ? "webp" : "jpg"}`));
     if (fullText) form.append("text", fullText);
     form.append("lang", lang); form.append("category", category); form.append("problem_type", problem);
     abortRef.current = new AbortController();
@@ -151,7 +188,7 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
       if (run !== runRef.current) return;
       setAi({ phase: "done", result: res });
       // Photo GPS is the preferred incident location, but never overrides a place the citizen already chose.
-      if (res.gps_suggestion && !spotRef.current) setSpot({ ...res.gps_suggestion, source: "photo" });
+      if (res.gps_suggestion && !spotRef.current) pickSpot({ ...res.gps_suggestion, source: "photo" });
     } catch (err) {
       if (run !== runRef.current || (err instanceof ApiError && err.code === "aborted")) return;
       sigRef.current = "";
@@ -159,45 +196,46 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
     }
   };
 
-  const toLocation = () => { void runAnalysis(); next(); };
+  // Analyse as soon as photos are added on the Photo & location step, so a photo's GPS can pre-fill the pin.
+  useEffect(() => { if (step === 3 && mainShots.length > 0 && busyPhotos === 0) void runAnalysis(); }, [step, shots, busyPhotos]); // eslint-disable-line react-hooks/exhaustive-deps
   const toReview = () => { void runAnalysis(); next(); };
 
-  /* ---------- location ---------- */
+  /* ---------- location (the exact pin the citizen chose is what is stored and what the authority sees) ---------- */
+  /** Names the pin with a short street/area label (OpenStreetMap reverse lookup). Failure is fine: coordinates are what count. */
+  const nameSpot = async (lat: number, lng: number) => {
+    const run = ++geoRun.current;
+    try {
+      const r = await (await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=17&lat=${lat}&lon=${lng}`, { headers: { Accept: "application/json" } })).json() as { address?: Record<string, string> };
+      if (run !== geoRun.current || !r.address) return;
+      const a = r.address;
+      const label = [a.road ?? a.pedestrian ?? a.neighbourhood, a.suburb ?? a.city_district ?? a.quarter].filter(Boolean).join(", ");
+      if (!label) return;
+      setSpot(sp => (sp && Math.abs(sp.lat - lat) < 1e-9 && Math.abs(sp.lng - lng) < 1e-9 ? { ...sp, label } : sp));
+      setLandmark(cur => { if (!cur || cur === autoLandmark.current) { autoLandmark.current = label; return label; } return cur; });
+    } catch { /* offline or blocked: keep the coordinates only */ }
+  };
+  const pickSpot = (sp: Spot) => { setSpot(sp); setLocError(""); void nameSpot(sp.lat, sp.lng); };
   const useMyLocation = () => {
-    if (!navigator.geolocation) { setLocError("Location is not available on this device."); return; }
+    if (!navigator.geolocation) { setLocError(tr(lang, "gpsUnavailable")); return; }
     setLocating(true); setLocError("");
     navigator.geolocation.getCurrentPosition(
-      p => { setSpot({ lat: p.coords.latitude, lng: p.coords.longitude, source: "gps" }); setLocating(false); },
-      () => { setLocError("Could not get your location. Search a place or pick an area below."); setLocating(false); },
+      p => { pickSpot({ lat: p.coords.latitude, lng: p.coords.longitude, source: "gps" }); setLocating(false); },
+      () => { setLocError(tr(lang, "gpsFailed")); setLocating(false); },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
     );
   };
-  const searchPlace = async () => {
-    const q = query.trim();
-    if (q.length < 3) return;
-    setSearching(true); setLocError(""); setHits([]);
-    try {
-      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=5&countrycodes=in&viewbox=72.75,19.30,73.00,18.85&q=${encodeURIComponent(`${q}, Mumbai`)}`;
-      const rows = (await (await fetch(url, { headers: { Accept: "application/json" } })).json()) as { lat: string; lon: string; display_name: string }[];
-      setHits(rows.map(r => ({ lat: Number(r.lat), lng: Number(r.lon), name: r.display_name.split(",").slice(0, 3).join(",") })));
-      if (rows.length === 0) setLocError("No match. Try a nearby landmark or pick the area below.");
-    } catch {
-      setLocError("Search is unavailable right now. Use GPS or pick the area below.");
-    } finally {
-      setSearching(false);
-    }
-  };
-  const chooseHit = (h: Hit) => { setSpot({ lat: h.lat, lng: h.lng, source: "manual", label: h.name }); if (!landmark) setLandmark(h.name); setHits([]); };
-  const chooseArea = (name: string) => { const c = AREA_CENTRES[name]; if (c) setSpot({ ...c, source: "manual", label: `${name} (approximate centre)` }); };
   const sourceLabel = (s: Spot) => tr(lang, s.source === "photo" ? "fromPhoto" : s.source === "gps" ? "fromGps" : "fromManual");
 
   /* ---------- review data ---------- */
   const geoKey = spot ? [spot.lat.toFixed(4), spot.lng.toFixed(4)] : null;
-  const geo = useQuery({ queryKey: ["geo", geoKey], queryFn: () => api.resolveGeo(spot!.lat, spot!.lng), enabled: step >= 5 && !!spot, staleTime: 5 * 60_000 });
+  const geo = useQuery({ queryKey: ["geo", geoKey], queryFn: () => api.resolveGeo(spot!.lat, spot!.lng), enabled: step >= 4 && !!spot, staleTime: 5 * 60_000 });
   const similar = useQuery({
-    queryKey: ["similar", geoKey, effective], enabled: step === 5 && !!spot,
+    queryKey: ["similar", geoKey, effective], enabled: step === 4 && !!spot,
     queryFn: () => api.nearby({ lat: spot!.lat, lng: spot!.lng, radius: 50, category: effective, status: "Reported,Under Review,In Progress", sort: "nearest" }),
   });
+
+  // A moved pin or a changed category is a different question: ask about nearby duplicates again.
+  useEffect(() => { setDup(d => (d === "upvoted" ? d : null)); setDupError(""); }, [geoKey?.join(","), effective]);
 
   const pct = result?.confidence != null ? Math.round(result.confidence * 100) : null;
   const imageUsed = !!result && result.source.includes("image");
@@ -206,26 +244,76 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
   const aiBusy = ai.phase === "loading";
   const sourceText = result ? tr(lang, result.source === "image" ? "fromPhotoSrc" : result.source === "text" ? "fromTextSrc" : "fromBothSrc") : "";
   const qualityKey = (l: string): StrKey => (l === "good" ? "q_good" : l === "blurry" ? "q_blurry" : l === "dark" ? "q_dark" : "q_low");
-  const firstImage = shots[0]?.url;
   const department = geo.data?.departments[effective] ?? null;
-  const mediaIds = result?.media_ids ?? [];
+  /* A photo is "not matching" when the model is sure it shows another category than the one now chosen. Those are left out. */
+  const norm = (c: string) => MERGED_CATEGORY[c] ?? c;
+  const checks: PhotoCheck[] = result?.photo_checks ?? [];
+  const isMismatch = (c: PhotoCheck) => effective !== "Other" && c.looks_like !== "Other" && c.confidence >= 0.6 && norm(c.looks_like) !== norm(effective) && !keepPhotos.includes(c.media_id);
+  const mismatched = checks.filter(isMismatch);
+  const dropped = new Set(mismatched.map(c => c.media_id));
+  const mediaIds = (result?.media_ids ?? []).filter(id => !dropped.has(id));
+  /** The local photo behind a check (uploads that failed to decode are skipped by the server, so indexes are mapped). */
+  const shotOf = (c: PhotoCheck): Shot | undefined => {
+    const bad = new Set((result?.photo_errors ?? []).map(e => e.index));
+    return mainShots.filter((_, n) => !bad.has(n))[c.index];
+  };
+  const hasEvidence = mediaIds.length > 0 || !!fullText;
+
+  /** Upvote the already-reported problem instead of filing a new report. */
+  const upvote = async (item: IncidentPublic) => {
+    setUpvoting(true); setDupError("");
+    try {
+      const r = await api.confirm(item.id);
+      setCreated([{ report_id: item.id, incident_id: item.id, incident_public_id: item.public_id, merged: true, affected_count: r.affected_count, severity: item.severity, status: item.status, area: item.area, department: geo.data?.departments[effective] ?? null }]);
+      setDup("upvoted"); setStep(5);
+    } catch (err) {
+      setDupError(err instanceof ApiError ? err.message : tr(lang, "dupFailed"));
+    } finally {
+      setUpvoting(false);
+    }
+  };
 
   const submit = async () => {
     if (!spot) return;
     setSubmitting(true); setSubmitError("");
+    const place = { lat: spot.lat, lng: spot.lng, location_source: spot.source, address_text: landmark.trim() || spot.label || undefined };
     try {
       const flags = [...new Set([...(result?.flags ?? []), ...mapped.flags])];
       const res = await api.createReport({
-        media_ids: mediaIds, category: effective, problem_type: problem, description: fullText || undefined,
-        lat: spot.lat, lng: spot.lng, location_source: spot.source, address_text: landmark.trim() || spot.label || undefined,
+        media_ids: mediaIds, category: effective, problem_type: problem, description: fullText || undefined, ...place,
         flags, citizen_message: message.trim() || undefined, answers: sameCategory && Object.keys(answers).length ? answers : undefined,
         ai: result?.category ? {
           category: result.category, confidence: result.confidence, model_version: result.model_version,
           source: result.source === "none" ? undefined : result.source, disagreement: result.disagreement ?? undefined,
         } : undefined,
       });
-      setCreated(res);
-      setStep(6);
+      const all: ReportCreated[] = [res];
+      // Extra problems: same place, their own answers and photos, analysed one by one. One failing does not undo the others.
+      const failed: string[] = [];
+      for (const extra of extras) {
+        try {
+          const a = answersBy[extra] ?? {}, m = fromAnswers(extra, a);
+          const text = [description.trim(), ...m.addons].filter(Boolean).join(" ").slice(0, 500);
+          const mine = shots.filter(s => s.cat === extra);
+          let analysis: Analysis | null = null;
+          if (mine.length || text) {
+            const form = new FormData();
+            mine.forEach((s, i) => form.append("photos", s.blob, `photo-${i + 1}.${s.blob.type === "image/webp" ? "webp" : "jpg"}`));
+            if (text) form.append("text", text);
+            form.append("lang", lang); form.append("category", extra); form.append("problem_type", m.problem);
+            analysis = await analyze(form, () => undefined).catch(() => null);
+          }
+          const okMedia = (analysis?.media_ids ?? []).filter(id => !(analysis?.photo_checks ?? []).some(c => c.media_id === id && !c.matches));
+          all.push(await api.createReport({
+            media_ids: okMedia, category: extra, problem_type: m.problem, description: text || undefined, ...place,
+            flags: [...new Set([...(analysis?.flags ?? []), ...m.flags])], citizen_message: message.trim() || undefined, answers: Object.keys(a).length ? a : undefined,
+            ai: analysis?.category ? { category: analysis.category, confidence: analysis.confidence, model_version: analysis.model_version, source: analysis.source === "none" ? undefined : analysis.source, disagreement: analysis.disagreement ?? undefined } : undefined,
+          }));
+        } catch { failed.push(extra); }
+      }
+      setCreated(all);
+      if (failed.length) setSubmitError(`${tr(lang, "extraFailed")}: ${failed.map(f => catName(lang, f)).join(", ")}`);
+      setStep(5);
     } catch (err) {
       setSubmitError(err instanceof ApiError ? err.message : "Could not submit. Please try again.");
     } finally {
@@ -233,91 +321,132 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
     }
   };
 
-  const categoryButtons = (selected: string | null, onPick: (name: string) => void) => (
-    <div className="flow-categories">{categories.map(([name, icon]) => <button className={selected === name ? "selected" : ""} onClick={() => onPick(name)} key={name}><CategoryThumb name={name} icon={icon} /><b>{catName(lang, name)}</b><small>{(CAT_HINT[name] ?? CAT_HINT.Other)[lang]}</small>{selected === name && <Icon name="check" />}</button>)}</div>
+  /** Photos that do not match the chosen category: shown with the reason, left out by default, the citizen decides. */
+  const mismatchPanel = () => mismatched.length === 0 ? null : <div className="mm-panel" role="alert">
+    <h3><Icon name="alert" size={17} /> {tr(lang, "mmTitle")}</h3>
+    <p>{tr(lang, "mmBody")}</p>
+    {mismatched.map(c => { const shot = shotOf(c); const looks = c.looks_like === "not_civic" ? null : c.looks_like;
+      return <div className="mm-item" key={c.media_id}>
+        <img src={shot?.url ?? c.thumb_url} alt="" />
+        <div><b>{looks ? `${tr(lang, "mmLooksLike")} ${catName(lang, looks)} (${Math.round(c.confidence * 100)}%)` : tr(lang, "mmNotCivic")}</b>
+          <small>{tr(lang, "mmChosen")}: {catName(lang, effective)} · {tr(lang, "mmNotAttached")}</small>
+          <span className="mm-actions">
+            {looks && <button className="secondary compact" onClick={() => setFinalCategory(looks)}>{tr(lang, "mmSwitch")} {catName(lang, looks)}</button>}
+            <button className="secondary compact" onClick={() => setKeepPhotos(k => [...k, c.media_id])}>{tr(lang, "mmKeep")}</button>
+            {shot && <button className="text-button" onClick={() => removeShot(shot.key)}>{tr(lang, "remove")}</button>}
+          </span></div></div>; })}
+    <button className="text-button" onClick={() => setMmPicking(p => !p)}>{tr(lang, "chooseOwn")}</button>
+    {mmPicking && categoryButtons([effective], name => { setFinalCategory(name); setMmPicking(false); })}
+  </div>;
+
+  /* The same kind of problem is already open within 50 m: upvote it, or add the citizen's own report to it. */
+  const near = step === 4 ? similar.data?.items[0] : undefined;
+  const dupCard = () => !near || dup === "raise" ? null : <div className="dup-card" role="alert">
+    <h3><Icon name="pin" size={17} /> {tr(lang, "dupTitle")}</h3>
+    <p>{tr(lang, "dupBody")}</p>
+    <div className="dup-item"><b>{near.title}</b><small>{near.distance_m ?? 0} m · {near.affected_count} {tr(lang, "dupAffected")} · {statusName(lang, near.status)} · {near.public_id}</small></div>
+    {near.reported_by_me ? <p className="muted-line">{tr(lang, "dupAlreadyYours")}</p> : near.confirmed_by_me ? <p className="muted-line">{tr(lang, "dupAlreadyUpvoted")}</p> : null}
+    <div className="dup-actions">
+      {!near.reported_by_me && !near.confirmed_by_me && <button className="primary compact" onClick={() => void upvote(near)} disabled={upvoting}>{upvoting ? tr(lang, "submitting") : tr(lang, "dupUpvote")}</button>}
+      <button className="secondary compact" onClick={() => setDup("raise")}>{tr(lang, "dupRaise")}</button>
+    </div>
+    <small className="muted-line">{tr(lang, "dupHelp")}</small>
+    {dupError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {dupError}</div>}
+  </div>;
+
+  const categoryButtons = (picked: string[], onPick: (name: string) => void, multi = false) => (
+    <div className="flow-categories">{categories.map(([name, icon]) => { const n = picked.indexOf(name); return <button className={n >= 0 ? "selected" : ""} aria-pressed={n >= 0} onClick={() => onPick(name)} key={name}><CategoryThumb name={name} icon={icon} /><b>{catName(lang, name)}</b><small>{(CAT_HINT[name] ?? CAT_HINT.Other)[lang]}</small>{n >= 0 && (multi ? <em className="pick-badge">{n === 0 ? tr(lang, "mainBadge") : `+${n}`}</em> : <Icon name="check" />)}</button>; })}</div>
   );
 
-  const canQuestions = !!category && (questions.length === 0 || !!answers[questions[0].id]);
-  const canPhoto = (shots.length > 0 || !!description.trim()) && busyPhotos === 0;
+  const canQuestions = selected.length > 0 && selected.every(c => { const q = QUESTIONS[c] ?? []; return q.length === 0 || !!answersBy[c]?.[q[0].id]; });
+  const canPhotoLoc = (shots.length > 0 || !!description.trim()) && busyPhotos === 0 && !!spot;
 
   return <div className="modal-backdrop" hidden={!open}><div className="report-modal" role="dialog" aria-modal="true" aria-label="Report a problem">
     <div className="report-top"><Brand /><button onClick={close} aria-label={tr(lang, "close")} title={tr(lang, "close")}>×</button></div>
     <div className="progress">{STEP_KEYS.map((k, i) => <div className={step >= i + 1 ? "active" : ""} key={k}><span>{step > i + 1 ? <Icon name="check" size={13} /> : String(i + 1).padStart(2, "0")}</span><b>{tr(lang, k)}</b></div>)}</div>
     <div className="flow-body">
-      {step < 6 && <button className="back" onClick={back}>← {tr(lang, "back")}</button>}
+      {step < 5 && <button className="back" onClick={back}>← {tr(lang, "back")}</button>}
 
-      {step === 1 && <><span className="flow-eyebrow">1 · {tr(lang, "stepProblem").toUpperCase()}</span><h2>{tr(lang, "whatNeeds")}</h2><p>{tr(lang, "pickCategory")}</p>
-        {categoryButtons(category, name => { setCategory(name); setAnswers({}); setFinalCategory(null); })}
-        <button className="primary full" disabled={!category} onClick={next}>{tr(lang, "next")} <Icon name="arrow" /></button></>}
+      {step === 1 && <><span className="flow-eyebrow">1 · {tr(lang, "stepProblem").toUpperCase()}</span><h2>{tr(lang, "whatNeeds")}</h2><p>{tr(lang, "pickMulti")}</p>
+        {categoryButtons(selected, toggleCategory, true)}
+        <button className="primary full" disabled={selected.length === 0} onClick={next}>{tr(lang, "next")} <Icon name="arrow" /></button></>}
 
-      {step === 2 && category && <><span className="flow-eyebrow">2 · {tr(lang, "stepQuestions").toUpperCase()} · {catName(lang, category).toUpperCase()}</span><h2>{tr(lang, "fewQuestions")}</h2><p>{tr(lang, "tapAnswer")}</p>
-        {questions.map(q => <div className="q-block" key={q.id}><h3>{q.text[lang]}</h3><div className="problem-list">{q.options.map(opt => <button className={answers[q.id] === opt.id ? "selected" : ""} onClick={() => setAnswers(a => ({ ...a, [q.id]: opt.id }))} key={opt.id}><span>{answers[q.id] === opt.id && <Icon name="check" />}</span>{optLabel(opt, lang)}</button>)}</div></div>)}
+      {step === 2 && category && <><span className="flow-eyebrow">2 · {tr(lang, "stepQuestions").toUpperCase()}</span><h2>{tr(lang, "fewQuestions")}</h2><p>{tr(lang, "tapAnswer")}</p>
+        {selected.map(c => <section className="q-group" key={c}>
+          {selected.length > 1 && <h3 className="q-cat"><span>{c === category ? tr(lang, "mainBadge") : tr(lang, "alsoBadge")}</span>{catName(lang, c)}</h3>}
+          {(QUESTIONS[c] ?? []).map(q => <div className="q-block" key={q.id}><h3>{q.text[lang]}</h3><div className="problem-list">{q.options.map(opt => <button className={answersBy[c]?.[q.id] === opt.id ? "selected" : ""} onClick={() => setAnswersBy(a => ({ ...a, [c]: { ...a[c], [q.id]: opt.id } }))} key={opt.id}><span>{answersBy[c]?.[q.id] === opt.id && <Icon name="check" />}</span>{optLabel(opt, lang)}</button>)}</div></div>)}
+        </section>)}
+        <div className="describe-box">
+          <div className="describe-head"><label htmlFor="report-description">{tr(lang, "describe")}</label>
+            <button type="button" className={recording ? "voice-btn recording" : "voice-btn"} onClick={toggleVoice} aria-pressed={recording}><Icon name="mic" size={18} /> {recording ? tr(lang, "recording") : tr(lang, "voice")}</button></div>
+          <textarea id="report-description" value={description} maxLength={500} rows={3} onChange={e => setDescription(e.target.value)} placeholder={tr(lang, "describeEx")} />
+          {recording && <p className="muted-line" aria-live="polite">{tr(lang, "listening")} {heard && `“${heard}”`}</p>}
+          {voiceNote && <p className="muted-line" role="status">{voiceNote}</p>}
+          <small className="muted-line">{tr(lang, "voiceLangs")}</small>
+        </div>
         <button className="primary full" disabled={!canQuestions} onClick={next}>{tr(lang, "next")} <Icon name="arrow" /></button></>}
 
-      {step === 3 && <><span className="flow-eyebrow">3 · {tr(lang, "stepPhoto").toUpperCase()}</span><h2>{tr(lang, "showProblem")}</h2><p>{tr(lang, "photoHelp")}</p>
-        <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={addFiles} />
+      {step === 3 && <><span className="flow-eyebrow">3 · {tr(lang, "stepPhotoLoc").toUpperCase()}</span><h2>{tr(lang, "photoLocTitle")}</h2><p>{tr(lang, "photoLocHelp")}</p>
         <input ref={uploadRef} type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif" multiple hidden onChange={addFiles} />
-        {shots.length > 0 && <div className="photo-strip">{shots.map((s, i) => <div className="upload-preview" key={s.key}><img src={s.url} alt={`Evidence photo ${i + 1}`} /><span><Icon name="check" /> {i + 1} · {Math.round(s.blob.size / 1024)} KB</span><button onClick={() => removeShot(s.key)}>{tr(lang, "remove")}</button></div>)}</div>}
-        {busyPhotos > 0 && <div className="upload-progress indeterminate" role="status"><i /><small>Preparing photo…</small></div>}
+        <button className="upload-drop" onClick={() => uploadRef.current?.click()} disabled={shots.length >= MAX_PHOTOS}><span><Icon name="plus" size={26} /></span><b>{tr(lang, "uploadPhoto")}</b><small>{shots.length}/{MAX_PHOTOS}</small></button>
+        {shots.length > 0 && <div className="photo-strip">{shots.map((s, i) => <div className="upload-preview" key={s.key}><img src={s.url} alt={`Evidence photo ${i + 1}`} /><span><Icon name="check" /> {i + 1} · {Math.round(s.blob.size / 1024)} KB</span><button onClick={() => removeShot(s.key)}>{tr(lang, "remove")}</button>
+          {selected.length > 1 && <select className="shot-cat" value={s.cat} onChange={e => assignShot(s.key, e.target.value)} aria-label={tr(lang, "whichProblem")}>{selected.map(c => <option key={c} value={c}>{catName(lang, c)}</option>)}</select>}</div>)}</div>}
+        {busyPhotos > 0 && <div className="upload-progress indeterminate" role="status"><i /><small>{tr(lang, "preparing")}</small></div>}
         {photoError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {photoError}</div>}
-        <div className="capture-grid">
-          <button onClick={() => cameraRef.current?.click()} disabled={shots.length >= MAX_PHOTOS}><span><Icon name="camera" size={30} /></span><b>{tr(lang, "takePhoto")}</b></button>
-          <button onClick={() => uploadRef.current?.click()} disabled={shots.length >= MAX_PHOTOS}><span><Icon name="plus" size={30} /></span><b>{tr(lang, "uploadPhoto")}</b></button>
-          <button className={recording ? "recording" : ""} onClick={toggleVoice}><span><Icon name="mic" size={30} /></span><b>{recording ? tr(lang, "recording") : tr(lang, "voice")}</b><small>English · हिन्दी · मराठी</small></button>
-        </div>
-        <label className="field describe"><span>{tr(lang, "describe")}</span><textarea id="report-description" value={description} maxLength={500} rows={3} onChange={e => setDescription(e.target.value)} placeholder={tr(lang, "describeEx")} /></label>
-        {voiceNote && <p className="muted-line">{voiceNote}</p>}
-        {!canPhoto && busyPhotos === 0 && <p className="muted-line">{tr(lang, "needEvidence")}</p>}
-        <button className="primary full" disabled={!canPhoto} onClick={toLocation}>{tr(lang, "next")} <Icon name="arrow" /></button></>}
+        {mismatchPanel()}
 
-      {step === 4 && <><span className="flow-eyebrow">4 · {tr(lang, "stepLocation").toUpperCase()}</span><h2>{tr(lang, "whereIsIt")}</h2><p>{tr(lang, "whereHelp")}</p>
-        {result?.gps_suggestion && spot?.source !== "photo" && <div className="ai-suggest"><span><Icon name="pin" size={16} /> {tr(lang, "photoHasGps")}</span><button className="secondary compact" onClick={() => setSpot({ ...result.gps_suggestion!, source: "photo" })}>{tr(lang, "use")}</button></div>}
-        {spot?.source === "photo" && <div className="ai-suggest"><span><Icon name="pin" size={16} /> {tr(lang, "photoHasGps")}</span></div>}
-        <div className="location-actions"><button className="primary" onClick={useMyLocation} disabled={locating}><Icon name="pin" /> {locating ? tr(lang, "finding") : tr(lang, "useGps")}</button></div>
-        <div className="loc-search"><label><Icon name="search" /><input value={query} maxLength={100} onChange={e => setQuery(e.target.value)} onKeyDown={e => { if (e.key === "Enter") void searchPlace(); }} placeholder={tr(lang, "searchPlace")} aria-label={tr(lang, "searchPlace")} /></label><button className="secondary compact" onClick={() => void searchPlace()} disabled={searching || query.trim().length < 3}>{tr(lang, "search")}</button></div>
-        {hits.length > 0 && <ul className="loc-hits">{hits.map(h => <li key={`${h.lat}${h.lng}`}><button onClick={() => chooseHit(h)}><Icon name="pin" size={14} /> {h.name}</button></li>)}</ul>}
-        <label className="field"><span>{tr(lang, "orPickArea")}</span><select value="" onChange={e => chooseArea(e.target.value)}><option value="">{tr(lang, "chooseArea")}</option>{AREAS.map(a => <option key={a} value={a}>{a}</option>)}</select></label>
+        <h3 className="loc-title"><Icon name="pin" size={17} /> {tr(lang, "whereIsIt")}</h3>
+        <p className="muted-line">{tr(lang, "whereHelp")}</p>
+        {result?.gps_suggestion && spot?.source !== "photo" && <div className="ai-suggest"><span><Icon name="pin" size={16} /> {tr(lang, "photoHasGps")}</span><button className="secondary compact" onClick={() => pickSpot({ ...result.gps_suggestion!, source: "photo" })}>{tr(lang, "use")}</button></div>}
+        <div className="location-actions"><button className="primary" onClick={useMyLocation} disabled={locating}><Icon name="pin" /> {locating ? tr(lang, "finding") : tr(lang, "useGps")}</button><span className="muted-line">{tr(lang, "tapMap")}</span></div>
+        <LocationPicker spot={spot} onPick={(lat, lng) => pickSpot({ lat, lng, source: "manual" })} />
         {locError && <p className="muted-line">{locError}</p>}
-        {spot ? <><div className="flow-map"><iframe title="Incident location on OpenStreetMap" src={mapSrc(spot)} /><span><Icon name="pin" /> {spot.lat.toFixed(5)}, {spot.lng.toFixed(5)}</span></div>
-          <div className="location-details"><div><small>{tr(lang, "incidentLocation").toUpperCase()}</small><b>{sourceLabel(spot)}{spot.label ? ` · ${spot.label}` : ""}</b></div></div></>
+        {spot ? <div className="location-details"><div><small>{tr(lang, "incidentLocation").toUpperCase()}</small><b>{sourceLabel(spot)}{spot.label ? ` · ${spot.label}` : ""}</b></div><div><small>{tr(lang, "coordinates").toUpperCase()}</small><b>{spot.lat.toFixed(5)}, {spot.lng.toFixed(5)}</b></div></div>
           : <div className="empty-note"><Icon name="pin" /><span><b>{tr(lang, "noSpot")}</b></span></div>}
-        <label className="field"><span>{tr(lang, "landmark")}</span><input value={landmark} maxLength={200} onChange={e => setLandmark(e.target.value)} /></label>
-        <button className="primary full" disabled={!spot} onClick={toReview}>{tr(lang, "next")} <Icon name="arrow" /></button></>}
+        <label className="field"><span>{tr(lang, "landmark")}</span><input value={landmark} maxLength={120} onChange={e => setLandmark(e.target.value)} /></label>
+        {!(shots.length > 0 || description.trim()) && busyPhotos === 0 && <p className="muted-line">{tr(lang, "needEvidence")}</p>}
+        <button className="primary full" disabled={!canPhotoLoc} onClick={toReview}>{tr(lang, "next")} <Icon name="arrow" /></button></>}
 
-      {step === 5 && category && spot && <><span className="flow-eyebrow">5 · {tr(lang, "stepReview").toUpperCase()}</span><h2>{tr(lang, "reviewTitle")}</h2><p>{tr(lang, "reviewHelp")}</p>
+      {step === 4 && category && spot && <><span className="flow-eyebrow">4 · {tr(lang, "stepReview").toUpperCase()}</span><h2>{tr(lang, "reviewTitle")}</h2><p>{tr(lang, "reviewHelp")}</p>
+        {dupCard()}
+        {mismatchPanel()}
         <div className="rv-card">
-          {firstImage ? <div className="rv-photos">{shots.map((s, i) => <img key={s.key} src={s.url} alt={`Evidence photo ${i + 1}`} />)}</div> : <div className="no-photo"><Icon name="mic" size={26} /></div>}
+          {mainShots.length > 0 ? <div className="rv-photos">{mainShots.map((s, i) => { const skipped = checks.some(c => isMismatch(c) && shotOf(c)?.key === s.key); return <span className={skipped ? "rv-shot skipped" : "rv-shot"} key={s.key}><img src={s.url} alt={`Evidence photo ${i + 1}`} />{skipped && <em>{tr(lang, "mmNotAttached")}</em>}</span>; })}</div> : <div className="no-photo"><Icon name="mic" size={26} /></div>}
           <dl className="rv-list">
             <div><dt>{tr(lang, "problem")} <Tag kind="you" lang={lang} /></dt><dd><b>{problem} · {catName(lang, effective)}</b> <button className="text-button" onClick={() => setPickingCategory(p => !p)}>{tr(lang, "edit")}</button></dd></div>
-            <div><dt>{tr(lang, "incidentLocation")} <Tag kind="you" lang={lang} /></dt><dd>{spot.lat.toFixed(5)}, {spot.lng.toFixed(5)} · {sourceLabel(spot)}{landmark ? ` · ${landmark}` : ""} <button className="text-button" onClick={() => setStep(4)}>{tr(lang, "edit")}</button></dd></div>
-            <div><dt>{tr(lang, "areaWard")} <Tag kind="gis" lang={lang} /></dt><dd>{geo.isPending ? "…" : geo.data?.area ?? "—"}{geo.data?.method === "nearest_area_centre" ? " (nearest area)" : ""}</dd></div>
+            <div><dt>{tr(lang, "incidentLocation")} <Tag kind="you" lang={lang} /></dt><dd>{landmark ? <b>{landmark}</b> : null}{landmark ? <br /> : null}{spot.lat.toFixed(5)}, {spot.lng.toFixed(5)} · {sourceLabel(spot)} <button className="text-button" onClick={() => setStep(3)}>{tr(lang, "edit")}</button><br /><small className="muted-line">{tr(lang, "authoritySees")}</small></dd></div>
+            <div><dt>{tr(lang, "areaWard")} <Tag kind="gis" lang={lang} /></dt><dd>{geo.isPending ? "…" : geo.data?.area ?? "—"}{geo.data?.method === "nearest_area_centre" ? ` (${tr(lang, "nearestArea")})` : ""}</dd></div>
             <div><dt>{tr(lang, "department")}</dt><dd>{department ?? "—"}</dd></div>
             {similar.data && <div><dt>{tr(lang, "similarNearby")}</dt><dd>{similar.data.items.length}</dd></div>}
             <div><dt>{tr(lang, "severity")} <Tag kind="rule" lang={lang} /></dt><dd className={result?.severity === "High" || result?.severity === "Critical" ? "high" : ""}>{result?.severity ?? "—"}{result?.flags.length ? ` · ${result.flags.join(", ")}` : ""}</dd></div>
           </dl>
-          {pickingCategory && <>{categoryButtons(effective, name => { setFinalCategory(name); setPickingCategory(false); })}</>}
+          {pickingCategory && <>{categoryButtons([effective], name => { setFinalCategory(name); setPickingCategory(false); })}</>}
         </div>
+        {extras.length > 0 && <div className="rv-extra"><h3>{tr(lang, "separateReports")}</h3><ul>{extras.map(c => <li key={c}><b>{catName(lang, c)}</b><span>{fromAnswers(c, answersBy[c] ?? {}).problem} · {shots.filter(s => s.cat === c).length} {tr(lang, "photosWord")}</span></li>)}</ul><small className="muted-line">{tr(lang, "extraNote")}</small></div>}
 
-        <div className="rv-ai" aria-live="polite">
-          <h3><Icon name="spark" size={16} /> {tr(lang, "aiTitle")}</h3>
-          {aiBusy && <p className="muted-line">{tr(lang, "analysing")} {shots.length > 0 && ai.phase === "loading" && ai.progress < 1 ? `${Math.round(ai.progress * 100)}%` : ""}</p>}
-          {ai.phase === "failed" && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {tr(lang, "aiUnavailable")}. {shots.length > 0 && "Your photos were not uploaded. Retry, or continue without them."} <button className="text-button" onClick={() => void runAnalysis(true)}>{tr(lang, "retry")}</button></div>}
-          {result && !result.ai_available && <p className="muted-line">{shots.length > 0 && result.media_ids.length > 0 ? tr(lang, "noImageModel") : tr(lang, "aiUnavailable")}</p>}
-          {result && result.ai_available && !result.image_model_active && shots.length > 0 && <p className="muted-line">{tr(lang, "photoNotAnalysed")}</p>}
-          {result && result.ai_available && <dl className="rv-list">
-            <div><dt>{tr(lang, "detected")} <Tag kind="ml" lang={lang} /></dt><dd><b>{result.category ? catName(lang, result.category) : "—"}</b></dd></div>
-            <div><dt>{tr(lang, "confidence")}</dt><dd>{pct !== null ? (result.image_confidence != null && result.text_confidence != null
-              ? `${tr(lang, "fromPhotoSrc")} ${Math.round(result.image_confidence * 100)}% · ${tr(lang, "fromTextSrc")} ${Math.round(result.text_confidence * 100)}%${result.agreement === "agree" ? ` · ${tr(lang, "aiHigh")}` : ""}`
-              : `${pct}% · ${sourceText}`) : "—"}{pct !== null && !sure ? ` · ${tr(lang, "lowConf")}` : ""}</dd></div>
-            {imageUsed && result.explanation && <div><dt>{tr(lang, "photoEvidence")} <Tag kind="ml" lang={lang} /></dt><dd>{result.explanation}</dd></div>}
-            {!imageUsed && textUsed && result.explanation && <div><dt>{tr(lang, "textEvidence")} <Tag kind="ml" lang={lang} /></dt><dd>{result.explanation}</dd></div>}
-            {result.flags.length > 0 && <div><dt>{tr(lang, "riskFlags")} <Tag kind="rule" lang={lang} /></dt><dd>{result.flags.join(", ")}</dd></div>}
-          </dl>}
-          {result && shots.length > 0 && result.media_ids.length > 0 && !imageUsed && result.ai_available && <p className="muted-line">{tr(lang, "noImageModel")}</p>}
-          {result && result.photo_quality.length > 0 && <p className="muted-line">{tr(lang, "photoQuality")} <Tag kind="rule" lang={lang} />: {result.photo_quality.map((q, i) => `${i + 1}: ${tr(lang, qualityKey(q.label))}`).join(" · ")}</p>}
-          {result && result.photo_errors.length > 0 && <p className="muted-line">{result.photo_errors.length} photo(s) could not be read and were skipped: {result.photo_errors[0].message}</p>}
-          {result?.agreement === "agree" && <p className="rv-agree"><Icon name="check" size={15} /> {tr(lang, "aiHigh")}</p>}
-          {result?.not_civic && <p className="muted-line">This photo may not show a civic problem. Check the category below.</p>}
+        <div className="rv-ai ai-pro" aria-live="polite">
+          <div className="ai-head"><span className="ai-badge"><Icon name="spark" size={16} /></span><div><h3>{tr(lang, "aiTitle")}</h3><small>{tr(lang, "aiSubtitle")}</small></div>
+            {result && result.ai_available && pct !== null && <div className={`ai-ring ${sure ? "ok" : "low"}`} style={{ "--p": pct } as React.CSSProperties} role="img" aria-label={`${tr(lang, "confidence")} ${pct}%`}><b>{pct}%</b></div>}</div>
+          {aiBusy && <div className="ai-loading"><i /><span>{tr(lang, "analysing")} {mainShots.length > 0 && ai.phase === "loading" && ai.progress < 1 ? `${Math.round(ai.progress * 100)}%` : ""}</span></div>}
+          {ai.phase === "failed" && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {tr(lang, "aiUnavailable")}. {mainShots.length > 0 && tr(lang, "photosNotUploaded")} <button className="text-button" onClick={() => void runAnalysis(true)}>{tr(lang, "retry")}</button></div>}
+          {result && !result.ai_available && <p className="muted-line">{mainShots.length > 0 && result.media_ids.length > 0 ? tr(lang, "noImageModel") : tr(lang, "aiUnavailable")}</p>}
+          {result && result.ai_available && <>
+            <div className="ai-main"><small>{tr(lang, "detected")} <Tag kind="ml" lang={lang} /></small><b>{result.category ? catName(lang, result.category) : "—"}</b>
+              <div className="ai-chips">{pct !== null && <span className={`ai-chip ${sure ? "ok" : "warn"}`}>{pct}% · {sourceText}{!sure ? ` · ${tr(lang, "lowConf")}` : ""}</span>}
+                {result.agreement === "agree" && <span className="ai-chip ok"><Icon name="check" size={13} /> {tr(lang, "aiHigh")}</span>}
+                {result.severity && <span className={`ai-chip ${result.severity === "High" || result.severity === "Critical" ? "warn" : ""}`}>{tr(lang, "severity")}: {result.severity}</span>}</div></div>
+            {pct !== null && result.image_confidence != null && result.text_confidence != null && <div className="ai-bars">
+              <div><span>{tr(lang, "fromPhotoSrc")}</span><i><u style={{ width: `${Math.round(result.image_confidence * 100)}%` }} /></i><b>{Math.round(result.image_confidence * 100)}%</b></div>
+              <div><span>{tr(lang, "fromTextSrc")}</span><i><u style={{ width: `${Math.round(result.text_confidence * 100)}%` }} /></i><b>{Math.round(result.text_confidence * 100)}%</b></div></div>}
+            <ul className="ai-evidence">
+              {imageUsed && result.explanation && <li><span>{tr(lang, "photoEvidence")} <Tag kind="ml" lang={lang} /></span>{result.explanation}</li>}
+              {!imageUsed && textUsed && result.explanation && <li><span>{tr(lang, "textEvidence")} <Tag kind="ml" lang={lang} /></span>{result.explanation}</li>}
+              {result.flags.length > 0 && <li><span>{tr(lang, "riskFlags")} <Tag kind="rule" lang={lang} /></span>{result.flags.join(", ")}</li>}
+              {result.photo_quality.length > 0 && <li><span>{tr(lang, "photoQuality")} <Tag kind="rule" lang={lang} /></span>{result.photo_quality.map((q, i) => `${i + 1}: ${tr(lang, qualityKey(q.label))}`).join(" · ")}</li>}
+            </ul></>}
+          {result && result.ai_available && !result.image_model_active && mainShots.length > 0 && <p className="muted-line">{tr(lang, "photoNotAnalysed")}</p>}
+          {result && result.photo_errors.length > 0 && <p className="muted-line">{result.photo_errors.length} {tr(lang, "photosSkipped")}: {result.photo_errors[0].message}</p>}
+          {result?.not_civic && <p className="muted-line">{tr(lang, "notCivic")}</p>}
           {result && (result.disagreement || (result.category && result.category !== category && sure)) && <div className="ai-suggest rv-verify">
             <span><b>{result.disagreement ? tr(lang, "aiVerify") : `${tr(lang, "suggests")}: ${catName(lang, result.category!)}`}</b>
               {result.disagreement && <><br />{tr(lang, "photoSays")}: {catName(lang, result.disagreement.image)} · {tr(lang, "textSays")}: {catName(lang, result.disagreement.text)}</>}</span>
@@ -343,14 +472,17 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
         <label className="field describe"><span>{tr(lang, "messageToAuthority")}</span><textarea value={message} maxLength={500} rows={2} onChange={e => setMessage(e.target.value)} placeholder={tr(lang, "messageEx")} /></label>
         <label className="consent"><input type="checkbox" checked={consent} onChange={e => setConsent(e.target.checked)} /> {tr(lang, "accurate")}</label>
         {submitError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {submitError}</div>}
-        <button className="primary full" onClick={() => void submit()} disabled={!consent || submitting || aiBusy}>{submitting ? tr(lang, "submitting") : tr(lang, "confirmSubmit")} <Icon name="arrow" /></button></>}
+        {!hasEvidence && <p className="muted-line" role="status">{tr(lang, "needEvidenceAfter")}</p>}
+        {near && dup === null && <p className="muted-line" role="status">{tr(lang, "dupChoose")}</p>}
+        <button className="primary full" onClick={() => void submit()} disabled={!consent || submitting || aiBusy || !hasEvidence || (!!near && dup === null)}>{submitting ? tr(lang, "submitting") : tr(lang, "confirmSubmit")} <Icon name="arrow" /></button></>}
 
-      {step === 6 && created && <div className="success-screen"><svg className="check-anim" viewBox="0 0 52 52" aria-hidden="true"><circle className="check-circle" cx="26" cy="26" r="24" fill="none" /><path className="check-mark" fill="none" d="M14 27l8 8 16-17" /></svg>
-        <h2>{tr(lang, "success")}</h2>
-        <div className="report-id"><small>{tr(lang, "reportId").toUpperCase()}</small><b>{created.incident_public_id}</b><span>{created.status}</span></div>
-        <p>{created.merged ? `${tr(lang, "merged")} ${created.affected_count}` : tr(lang, "trackIt")}{created.area ? ` · ${created.area}` : ""}{created.department ? ` · ${created.department}` : ""}</p>
-        <button className="primary full" onClick={() => done(created)}>{tr(lang, "trackBtn")} <Icon name="arrow" /></button></div>}
+      {step === 5 && created.length > 0 && <div className="success-screen"><svg className="check-anim" viewBox="0 0 52 52" aria-hidden="true"><circle className="check-circle" cx="26" cy="26" r="24" fill="none" /><path className="check-mark" fill="none" d="M14 27l8 8 16-17" /></svg>
+        <h2>{dup === "upvoted" ? tr(lang, "dupDone") : tr(lang, "success")}</h2>
+        {created.map(c => <div className="report-id" key={c.report_id}><small>{tr(lang, "reportId").toUpperCase()}</small><b>{c.incident_public_id}</b><span>{c.status}</span><p>{c.merged ? `${tr(lang, "merged")} ${c.affected_count}` : ""}{c.area ? ` ${c.area}` : ""}{c.department ? ` · ${c.department}` : ""}</p></div>)}
+        {submitError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {submitError}</div>}
+        <p>{tr(lang, "trackIt")}</p>
+        <button className="primary full" onClick={() => done(created[0])}>{tr(lang, "trackBtn")} <Icon name="arrow" /></button></div>}
 
-      {step < 6 && (shots.length > 0 || description || spot || category) && <button className="text-button discard" onClick={discard}>{tr(lang, "startOver")}</button>}
+      {step < 5 && (shots.length > 0 || description || spot || selected.length > 0) && <button className="text-button discard" onClick={discard}>{tr(lang, "startOver")}</button>}
     </div></div></div>;
 }

@@ -23,12 +23,12 @@ ROW_SELECT = """
 SELECT i.id, i.public_id, c.name AS category, c.hazard_points, d.name AS department, w.name AS area, i.address_text, i.severity::text AS severity,
        i.status::text AS status, i.flags, i.affected_count, i.priority_score, i.created_at, i.updated_at,
        fr.problem_type, fr.ai_category, fr.ai_confidence, fr.ai_source, fr.ai_disagreement, fr.nlp, fr.citizen_message, fr.user_corrected, fr.location_source,
-       fm.thumb_key, fm.storage_key {extra}
+       fr.sample_confidence, fm.thumb_key, fm.storage_key {extra}
 FROM page i
 JOIN categories c ON c.id = i.category_id
 LEFT JOIN departments d ON d.id = c.department_id
 LEFT JOIN wards w ON w.id = i.ward_id
-LEFT JOIN LATERAL (SELECT r.problem_type, ac.name AS ai_category, r.ai_confidence, r.ai_source, r.ai_disagreement, r.nlp, r.citizen_message, r.user_corrected, r.location_source
+LEFT JOIN LATERAL (SELECT r.problem_type, ac.name AS ai_category, r.ai_confidence, r.ai_source, r.ai_disagreement, r.nlp, r.citizen_message, r.user_corrected, r.location_source, r.sample_confidence
                    FROM reports r LEFT JOIN categories ac ON ac.id = r.ai_category_id
                    WHERE r.incident_id = i.id ORDER BY r.created_at LIMIT 1) fr ON true
 LEFT JOIN LATERAL (SELECT m.thumb_key, m.storage_key FROM reports r JOIN media m ON m.report_id = r.id
@@ -54,6 +54,8 @@ def public_row(row) -> dict:
         "status": row.status, "flags": list(row.flags), "affected_count": row.affected_count,
         "created_at": row.created_at, "updated_at": row.updated_at,
         "thumb_url": storage.signed_url(row.thumb_key) if row.thumb_key else None,
+        # Set only for example incidents whose photo is a training-dataset image: the image model's confidence for it.
+        "sample_confidence": getattr(row, "sample_confidence", None),
     }
 
 

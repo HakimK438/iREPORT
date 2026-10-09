@@ -5,6 +5,7 @@ import { AREAS, AREA_CENTRES, STATUSES } from "./store";
 import { api, refreshSession, setSessionLostHandler, setToken, type ApiUser, type IncidentPublic, type Page as ApiPage, type Session } from "./api";
 import { Brand, distanceLabel, homeCards, statusLabel } from "./brand";
 import { menuText, severityName, statusName, tr, type StrKey } from "./i18n";
+import { FAQS, HOW_STEPS, HOW_TIPS, HOW_UI } from "./i18nStaff";
 import AuthPage from "./AuthPage";
 import AuthorityDashboard from "./AuthorityDashboard";
 import AdminPanel from "./AdminPanel";
@@ -17,15 +18,6 @@ type Page = "home" | "community" | "reports" | "profile" | "auth" | "authority" 
 type User = ApiUser;
 
 const media = (file: string) => `${import.meta.env.BASE_URL}media/${file}`;
-
-const faqs = [
-  ["What can I report?", "Potholes and road damage, streetlights, waste, water and drainage, electrical hazards and other public-space issues."],
-  ["Can I choose the location manually?", "Yes. Search an area, landmark or street and move the map pin before confirming."],
-  ["Does iREPORT automatically contact BMC?", "Not unless a verified authority integration is active. We always show the delivery state clearly."],
-  ["How does Community work?", "It groups evidence into civic incidents and shows the combined community signal."],
-  ["Who do I call in an emergency?", "Call 112 for emergencies. For civic complaints, the BMC helpline is 1916 (24x7)."],
-  ["Is iREPORT an official BMC website?", "No. It is an independent citizen platform built for Metropolitan Mumbai."],
-];
 
 const bmcMapsUrl = "https://www.google.com/maps/search/?api=1&query=Brihanmumbai+Municipal+Corporation+Headquarters+Mahapalika+Marg+Fort+Mumbai";
 
@@ -48,36 +40,36 @@ const copy = {
     area: "Select your area",
   },
   hi: {
-    nav: ["होम", "समुदाय", "मेरी रिपोर्ट", "प्रोफ़ाइल"],
-    report: "समस्या रिपोर्ट करें",
+    nav: ["होम", "समुदाय", "मेरी शिकायतें", "प्रोफ़ाइल"],
+    report: "समस्या दर्ज करें",
     eyebrow: "मुंबई के लिए बनाया गया",
-    hero: "देखें। रिपोर्ट करें। मुंबई को बेहतर बनाएं।",
-    trust: "नागरिक समस्याओं की रिपोर्ट, प्रगति की जानकारी और मुंबई के आसपास की स्थिति देखने का आसान तरीका।",
-    start: "रिपोर्ट शुरू करें",
+    hero: "देखें। शिकायत दर्ज करें। मुंबई को बेहतर बनाएं।",
+    trust: "नागरिक समस्याओं की शिकायत, प्रगति की जानकारी और मुंबई के आसपास की स्थिति देखने का आसान तरीका।",
+    start: "शिकायत शुरू करें",
     explore: "अपना क्षेत्र देखें",
-    what: "आप कौन-सी नागरिक समस्याएँ रिपोर्ट कर सकते हैं?",
+    what: "आप कौन-सी नागरिक समस्याएँ दर्ज कर सकते हैं?",
     whatSub: "एक श्रेणी चुनें। बाकी में iREPORT आपकी मदद करेगा।",
     how: "एक सरल नागरिक प्रक्रिया",
     howSub: "न विभाग का नाम, न लंबे फॉर्म। नियंत्रण आपके पास है।",
     community: "आपके आसपास नागरिक समस्याएं",
-    reports: "आपकी रिपोर्ट",
+    reports: "आपकी शिकायत",
     profile: "आपका नागरिक नियंत्रण केंद्र",
     area: "अपना क्षेत्र चुनें",
   },
   mr: {
-    nav: ["मुख्यपृष्ठ", "समुदाय", "माझे अहवाल", "प्रोफाइल"],
+    nav: ["मुख्यपृष्ठ", "समुदाय", "माझ्या तक्रारी", "प्रोफाइल"],
     report: "समस्या नोंदवा",
     eyebrow: "मुंबईसाठी बनवलेले",
     hero: "पाहा. नोंदवा. मुंबई अधिक चांगली करा.",
     trust: "नागरी समस्या नोंदवण्याचा, प्रगती पाहण्याचा आणि मुंबईत काय घडते आहे हे जाणून घेण्याचा सोपा मार्ग.",
-    start: "अहवाल सुरू करा",
+    start: "तक्रार सुरू करा",
     explore: "तुमचा परिसर पहा",
     what: "तुम्ही कोणत्या नागरी समस्या नोंदवू शकता?",
     whatSub: "श्रेणी निवडा. पुढे iREPORT मदत करेल.",
     how: "एक स्पष्ट नागरी प्रक्रिया",
     howSub: "विभागांची नावे नाहीत. मोठे फॉर्म नाहीत. नियंत्रण तुमच्याकडे.",
     community: "तुमच्या आसपासच्या नागरी समस्या",
-    reports: "तुमचे अहवाल",
+    reports: "तुमच्या तक्रारी",
     profile: "तुमचे नागरी नियंत्रण केंद्र",
     area: "तुमचा परिसर निवडा",
   },
@@ -86,7 +78,7 @@ const copy = {
 const readLang = (): Lang => { try { const v = window.localStorage.getItem("ireport.lang"); return v === "hi" || v === "mr" ? v : "en"; } catch { return "en"; } };
 const saveLang = (l: Lang) => { try { window.localStorage.setItem("ireport.lang", l); } catch { /* storage unavailable */ } };
 
-function Header({ page, go, open, lang, setLang, user, logout }: { page: Page; go: (p: Page) => void; open: (category?: string) => void; lang: Lang; setLang: (l: Lang) => void; user: User | null; logout: () => void }) {
+function Header({ page, go, goSection, open, lang, setLang, user, logout }: { page: Page; go: (p: Page) => void; goSection: (id: string) => void; open: (category?: string) => void; lang: Lang; setLang: (l: Lang) => void; user: User | null; logout: () => void }) {
   const t = copy[lang];
   const staff = user !== null && user.role !== "citizen";
   const nav: [Page, string][] = !staff
@@ -95,7 +87,7 @@ function Header({ page, go, open, lang, setLang, user, logout }: { page: Page; g
   const initials = user ? user.name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase() : "";
   return <header className="topbar"><div className="nav-shell">
     <button className="brand-button" onClick={() => go("home")} aria-label="iREPORT home"><Brand /></button>
-    <nav className="desktop-nav" aria-label="Main navigation">{nav.map(([p, label]) => <button className={page === p ? "active" : ""} onClick={() => go(p)} key={p}>{label}</button>)}</nav>
+    <nav className="desktop-nav" aria-label="Main navigation">{nav.map(([p, label]) => <button className={page === p ? "active" : ""} onClick={() => go(p)} key={p}>{label}</button>)}{!staff && <><button onClick={() => goSection("how")}>{HOW_UI.navHow[lang]}</button><button onClick={() => goSection("help")}>{HOW_UI.navFaq[lang]}</button></>}</nav>
     <div className="nav-actions"><label className="language"><Icon name="language" size={16} /><select aria-label="Language" value={lang} onChange={e => setLang(e.target.value as Lang)}><option value="en">English</option><option value="hi">हिन्दी</option><option value="mr">मराठी</option></select></label>{!staff && <button className="primary compact" onClick={() => open()}><Icon name="plus" /> <span>{t.report}</span></button>}{user ? <div className="user-chip"><span>{initials}</span><b>{user.name.split(" ")[0]}</b><button onClick={logout} aria-label="Log out"><Icon name="logout" size={16} /><em>Log out</em></button></div> : <button className="secondary compact login-link" onClick={() => go("auth")}>Log in</button>}</div>
   </div></header>;
 }
@@ -113,9 +105,17 @@ function Reveal({ className = "", id, children }: { className?: string; id?: str
   return <section ref={ref} id={id} className={`${className} reveal${shown ? " in" : ""}`}>{children}</section>;
 }
 
-function Faq() {
+function Faq({ lang }: { lang: Lang }) {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
-  return <div className="faq-panel"><span className="eyebrow">HELP & FAQ</span><h2>Common questions</h2><div className="faq-list">{faqs.map(([q, a], i) => <div key={q} className={`faq-item${openIndex === i ? " open" : ""}`}><button aria-expanded={openIndex === i} onClick={() => setOpenIndex(openIndex === i ? null : i)}><span>{q}</span><Icon name="plus" size={20} /></button><div className="faq-body"><p>{a}</p></div></div>)}</div></div>;
+  return <div className="faq-panel"><span className="eyebrow">{HOW_UI.faqEyebrow[lang]}</span><h2>{HOW_UI.faqTitle[lang]}</h2><div className="faq-list">{FAQS.map(([q, a], i) => <div key={q.en} className={`faq-item${openIndex === i ? " open" : ""}`}><button aria-expanded={openIndex === i} onClick={() => setOpenIndex(openIndex === i ? null : i)}><span>{q[lang]}</span><Icon name="plus" size={20} /></button><div className="faq-body"><p>{a[lang]}</p></div></div>)}</div></div>;
+}
+
+/** Landing-page guide: what to do, in order, plus tips and what happens afterwards. */
+function HowItWorks({ lang, open }: { lang: Lang; open: () => void }) {
+  return <div className="how-guide"><span className="eyebrow">{HOW_UI.eyebrow[lang]}</span><h2>{HOW_UI.title[lang]}</h2><p className="how-sub">{HOW_UI.sub[lang]}</p>
+    <ol className="how-grid">{HOW_STEPS.map(s => <li key={s.title.en}><span className="how-ico"><Icon name={s.icon as IconName} size={22} /></span><b>{s.title[lang]}</b><p>{s.body[lang]}</p></li>)}</ol>
+    <div className="how-cols"><div><h3>{HOW_UI.tips[lang]}</h3><ul>{HOW_TIPS.map(t => <li key={t.en}>{t[lang]}</li>)}</ul></div>
+      <div><h3>{HOW_UI.after[lang]}</h3><div className="how-status"><span>{HOW_UI.after1[lang]}</span><i /><span>{HOW_UI.after2[lang]}</span><i /><span>{HOW_UI.after3[lang]}</span><i /><span>{HOW_UI.after4[lang]}</span></div><p>{HOW_UI.afterNote[lang]}</p><button className="primary" onClick={open}><Icon name="camera" /> {HOW_UI.start[lang]}</button></div></div></div>;
 }
 
 function BmcOffice() {
@@ -146,15 +146,16 @@ function Home({ open, go, lang }: { open: (category?: string) => void; go: (p: P
       <div className="hero-visual"><img src={media("bmc-headquarters.jpg")} alt="Brihanmumbai Municipal Corporation headquarters, Fort, Mumbai" /><div className="location-pill"><Icon name="pin" size={16} /> Fort, Mumbai</div></div>
     </section>
     <Reveal className="section category-section"><div className="section-heading cat-heading"><div><span className="eyebrow">{tr(lang, "catEyebrow")}</span><h2>{t.what}</h2></div><p>{t.whatSub}</p></div><div className="cat-grid" role="list">{homeCards.map((c, i) => <CategoryCard key={c.key} card={c} i={i} lang={lang} onClick={() => open(c.flow)} />)}</div></Reveal>
-    <Reveal id="help" className="section help-section"><Faq /><BmcOffice /></Reveal>
+    <Reveal id="how" className="section how-section"><HowItWorks lang={lang} open={() => open()} /></Reveal>
+    <Reveal id="help" className="section help-section"><Faq lang={lang} /><BmcOffice /></Reveal>
     <Reveal className="section final-cta"><div><span>READY WHEN YOU ARE</span><h2>Help Mumbai notice what matters.</h2></div><button className="primary large" onClick={() => open()}>Report a problem <Icon name="arrow" /></button></Reveal>
   </main>;
 }
 
 /** A real incident from the community feed. */
-function IncidentCard({ title, area, type, affected, image, severity, status, confirmed = false, busy = false, onConfirm }: { title: string; area: string; type: string; affected: number; image: string | null; severity: string; status: string; confirmed?: boolean; busy?: boolean; onConfirm?: () => void }) {
+function IncidentCard({ title, area, type, affected, image, severity, status, confirmed = false, busy = false, onConfirm, sample = null, lang = "en" }: { title: string; area: string; type: string; affected: number; image: string | null; severity: string; status: string; confirmed?: boolean; busy?: boolean; onConfirm?: () => void; sample?: number | null; lang?: Lang }) {
   const share = () => { const text = `${title} · ${area}`; if (navigator.share) navigator.share({ title: "iREPORT", text }).catch(() => {}); else navigator.clipboard?.writeText(text).catch(() => {}); };
-  return <article className="incident-card">{image ? <img src={image} alt="Civic incident evidence" loading="lazy" /> : <div className="no-photo"><Icon name="camera" size={26} /><small>No photo</small></div>}<div className="incident-body"><div className="incident-top"><span>{type}</span><b>{severity}</b></div><h3>{title}</h3><p><Icon name="pin" size={16} /> {area}</p><div className="signal"><strong>{affected}</strong><span>citizens affected</span><b>{status}</b></div><div className="incident-actions"><button className={confirmed ? "confirmed" : ""} disabled={busy} onClick={onConfirm}><Icon name={confirmed ? "check" : "heart"} /> {confirmed ? "Confirmed" : "Like / Confirm"}</button><button onClick={share}><Icon name="share" /> Share</button></div></div></article>;
+  return <article className="incident-card">{image ? <img src={image} alt="Civic incident evidence" loading="lazy" /> : <div className="no-photo"><Icon name="camera" size={26} /><small>No photo</small></div>}<div className="incident-body">{sample != null && <span className="sample-badge" title={tr(lang, "exampleBadge")}>{tr(lang, "exampleBadge")} · {tr(lang, "exampleConf")} {Math.round(sample * 100)}%</span>}<div className="incident-top"><span>{type}</span><b>{severity}</b></div><h3>{title}</h3><p><Icon name="pin" size={16} /> {area}</p><div className="signal"><strong>{affected}</strong><span>citizens affected</span><b>{status}</b></div><div className="incident-actions"><button className={confirmed ? "confirmed" : ""} disabled={busy} onClick={onConfirm}><Icon name={confirmed ? "check" : "heart"} /> {confirmed ? "Confirmed" : "Like / Confirm"}</button><button onClick={share}><Icon name="share" /> Share</button></div></div></article>;
 }
 
 const COMMUNITY_FILTERS: Record<string, { category?: string; status?: string; radius: number }> = {
@@ -204,9 +205,10 @@ function Community({ lang, user, go, defaultArea }: { lang: Lang; user: User | n
     {!centre && <div className="empty-note"><Icon name="search" /><span><b>{tr(lang, "cmChoose")}</b><small>{tr(lang, "cmChooseHelp")}</small></span></div>}
     {feed.isPending && centre && <div className="incident-grid">{[0, 1, 2].map(k => <div key={k} className="incident-card skeleton-card"><div className="skeleton-block tall" /><div className="incident-body"><div className="skeleton-line w50" /><div className="skeleton-line w90" /><div className="skeleton-line w60" /></div></div>)}</div>}
     {feed.isError && <div className="empty-note error"><Icon name="alert" /><span><b>{tr(lang, "cmLoadError")}</b><small>{(feed.error as Error).message}</small></span><button className="secondary compact" onClick={() => feed.refetch()}>{tr(lang, "rpRetry")}</button></div>}
-    {items.length > 0 && <div className="incident-grid">{items.map(i => <IncidentCard key={i.id} title={i.title} area={[i.area ?? "Mumbai", distanceLabel(i.distance_m)].filter(Boolean).join(" · ")} type={i.category.toUpperCase()} affected={i.affected_count} image={i.thumb_url} severity={`${severityName(lang, i.severity).toUpperCase()} ${tr(lang, "rpSeverity").toUpperCase()}`} status={statusLabel(i.status)} confirmed={!!i.confirmed_by_me || !!i.reported_by_me} busy={confirm.isPending && confirm.variables?.id === i.id} onConfirm={() => onConfirm(i)} />)}</div>}
+    {items.length > 0 && <div className="incident-grid">{items.map(i => <IncidentCard key={i.id} title={i.title} area={[i.area ?? "Mumbai", distanceLabel(i.distance_m)].filter(Boolean).join(" · ")} type={i.category.toUpperCase()} affected={i.affected_count} image={i.thumb_url} severity={`${severityName(lang, i.severity).toUpperCase()} ${tr(lang, "rpSeverity").toUpperCase()}`} status={statusLabel(i.status)} confirmed={!!i.confirmed_by_me || !!i.reported_by_me} busy={confirm.isPending && confirm.variables?.id === i.id} onConfirm={() => onConfirm(i)} sample={i.sample_confidence ?? null} lang={lang} />)}</div>}
     {feed.hasNextPage && <button className="secondary load-more" onClick={() => feed.fetchNextPage()} disabled={feed.isFetchingNextPage}>{feed.isFetchingNextPage ? tr(lang, "rpLoading") : tr(lang, "cmMore")}</button>}
     {confirm.isError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {(confirm.error as Error).message}</div>}
+    {items.some(i => i.sample_confidence != null) && <p className="muted-line sample-note">{tr(lang, "ad_samples")}</p>}
     {feed.isSuccess && <div className="empty-note"><Icon name="check" /><span><b>{items.length ? `Showing civic incidents for ${where}.` : `No civic incidents found for ${where}.`}</b><small>{tr(lang, "cmChangeFilters")}</small></span></div>}
   </main>;
 }
@@ -289,6 +291,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null), [booting, setBooting] = useState(true);
   const [afterLogin, setAfterLogin] = useState(false);
   const go = (p: Page) => { setPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const goSection = (id: string) => { setPage("home"); window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); };
   const goFaq = () => { setPage("home"); window.setTimeout(() => document.getElementById("help")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); };
 
   const endSession = useCallback(() => { setToken(null); setUser(null); setFlow("none"); qc.clear(); }, [qc]);
@@ -316,14 +319,14 @@ export default function App() {
   const logout = () => { api.logout(); endSession(); go("home"); };
   const view: Page = !booting && ((page === "authority" && user?.role !== "authority") || (page === "admin" && user?.role !== "admin")) ? "auth" : page;
   const area = user?.area ?? AREAS[0]; // home area: only the starting point of the Community feed, never a report location
-  return <div><Header page={view} go={go} open={openReport} lang={lang} setLang={setLang} user={user} logout={logout} />
+  return <div><Header page={view} go={go} goSection={goSection} open={openReport} lang={lang} setLang={setLang} user={user} logout={logout} />
     {view === "home" && <Home open={openReport} go={go} lang={lang} />}
     {view === "community" && <Community lang={lang} user={user} go={go} defaultArea={area} />}
     {view === "reports" && <Reports lang={lang} user={user} open={openReport} go={go} />}
     {view === "profile" && <Profile lang={lang} setLang={setLang} go={go} goFaq={goFaq} user={user} logout={logout} />}
     {view === "auth" && <AuthPage onLogin={handleLogin} bmcImage={`${import.meta.env.BASE_URL}media/bmc-headquarters.jpg`} />}
-    {view === "authority" && user && <AuthorityDashboard user={user} />}
-    {view === "admin" && user && <AdminPanel />}
+    {view === "authority" && user && <AuthorityDashboard user={user} lang={lang} />}
+    {view === "admin" && user && <AdminPanel lang={lang} />}
     <MobileNav page={view} go={go} open={openReport} lang={lang} user={user} logout={logout} />
     {flow !== "none" && user && <Suspense fallback={<div className="modal-backdrop"><div className="report-modal loading-modal" role="status">Loading…</div></div>}><ReportFlow key={flowKey} open={flow === "open"} initialCategory={flowCategory} lang={lang} close={() => setFlow("hidden")} discard={() => { setFlow("none"); }} done={() => { setFlow("none"); qc.invalidateQueries({ queryKey: ["reports"] }); qc.invalidateQueries({ queryKey: ["contribution"] }); qc.invalidateQueries({ queryKey: ["community"] }); go("reports"); }} /></Suspense>}
     <footer><div className="section"><Brand /><p>See it → Select it → Capture it → Locate it → Confirm it → Report it → Track it.</p><small>Independent civic platform for Metropolitan Mumbai · Not an official BMC website</small></div></footer></div>;
