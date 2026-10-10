@@ -90,7 +90,7 @@ async def register_citizen(client: httpx.AsyncClient, email: str | None = None, 
 
 
 async def resolve_complaint(client: httpx.AsyncClient, officer: dict, incident_id: str, **extra) -> httpx.Response:
-    """Marks a complaint Resolved: one click for the officer (DECISIONS.md #79)."""
+    """Marks a complaint Resolved: one click for the officer (README.md (Design decisions) #79)."""
     return await client.post(f"/authority/incidents/{incident_id}/update", json={"status": "Resolved", **extra}, headers=officer["headers"])
 
 

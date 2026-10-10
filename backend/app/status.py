@@ -8,7 +8,7 @@ agree for every enum value. Do not write `status <> 'Resolved'` anywhere.
 # Lifecycle: Reported -> Acknowledged -> Scheduled -> In Progress -> Resolved -> Closed
 LIFECYCLE = ("Reported", "Acknowledged", "Scheduled", "In Progress", "Resolved", "Closed")
 # Side states. "Transferred" is recorded in status_events only: after a transfer the complaint re-enters the
-# new department's queue as Reported (DECISIONS.md, workflow section).
+# new department's queue as Reported (README.md (Design decisions), workflow section).
 SIDE = ("Reopened", "On Hold", "Rejected", "Duplicate", "Transferred")
 STATUSES = (*LIFECYCLE, *SIDE)
 

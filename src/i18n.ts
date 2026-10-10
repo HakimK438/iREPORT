@@ -134,7 +134,7 @@ export const STR = {
   myLatest: T("My latest reports", "मेरी ताज़ा शिकायतें", "माझ्या अलीकडील तक्रारी"),
   noReports: T("No reports yet.", "अभी कोई शिकायत नहीं।", "अजून तक्रारी नाहीत."),
   email: T("Email", "ईमेल", "ईमेल"),
-  // my reports (drafts for native-speaker review: docs/I18N_REVIEW.md)
+  // my reports (drafts for native-speaker review: README.md (Language review))
   rpOnlyYours: T("Only submissions made by you appear here.", "यहाँ केवल आपके द्वारा दर्ज की गई शिकायतें दिखती हैं।", "येथे फक्त तुम्ही नोंदवलेल्या तक्रारी दिसतात."),
   rpNewReport: T("New report", "नई शिकायत", "नवीन तक्रार"),
   rpLogin: T("Log in to see your reports.", "अपनी शिकायतें देखने के लिए लॉग इन करें।", "तुमच्या तक्रारी पाहण्यासाठी लॉग इन करा."),

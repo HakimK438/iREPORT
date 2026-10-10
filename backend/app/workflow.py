@@ -1,8 +1,8 @@
 """Officer and citizen actions on a complaint. Every rule below is enforced here, on the backend; the UI only
 mirrors it. Every status change writes a status_events row with the actor and a reason.
 
-Rules (DECISIONS.md, "Workflow"):
-- Resolved is one click (owner decision, DECISIONS.md #79); the citizen then confirms or reopens.
+Rules (README.md (Design decisions), "Workflow"):
+- Resolved is one click (owner decision, README.md (Design decisions) #79); the citizen then confirms or reopens.
 - Rejected and On Hold need a reason. Duplicate needs the complaint no. it duplicates; the reporters move to it.
 - Transferred needs the correct category (the department follows the category) and a reason.
 - Closed and Reopened belong to the citizen (or to the 72 h auto-close job), never to an officer.

@@ -1,4 +1,4 @@
-"""All tunable numbers of the risk-based priority in ONE place (see DECISIONS.md, "Priority").
+"""All tunable numbers of the risk-based priority in ONE place (see README.md (Design decisions), "Priority").
 
 risk = impact (1-4) x likelihood (1-4)  ->  1..16
 migration 0013 stores CATEGORY_IMPACT / MONSOON_CATEGORIES in categories.impact / monsoon_sensitive and

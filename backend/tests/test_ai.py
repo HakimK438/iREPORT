@@ -27,7 +27,7 @@ async def test_analyze_photo_then_report_links_media(client):
     a = r.json()
     assert a["category"] == "Pothole" and a["confidence"] > 0.9 and a["uncertain"] is False and a["not_civic"] is False
     assert [t["category"] for t in a["top3"]][0] == "Pothole" and len(a["top3"]) == 3
-    # "Main road" is no longer assumed for a pothole: it is checked on the map (authority-v2, DECISIONS.md)
+    # "Main road" is no longer assumed for a pothole: it is checked on the map (authority-v2, README.md (Design decisions))
     assert a["severity"] == "High" and "Main road" not in a["flags"] and a["explanation"].startswith("The photo resembles a ")
     assert a["model_version"] == "img-1.0" and a["source"] == "image" and len(a["media_ids"]) == 1
     assert len(get_storage().objects) == 2  # main + thumbnail, nothing else

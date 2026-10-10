@@ -1,6 +1,6 @@
 """Authority analytics: every number is computed from incidents and status_events, filtered by date range, ward and category.
 
-Definitions (also in DECISIONS.md):
+Definitions (also in README.md (Design decisions)):
 - resolved_at  = the FIRST status event into Resolved. "Days to close", "within SLA" and "reopened" are about complaints that have one.
 - done_at      = the first event into Resolved, Rejected or Duplicate: the moment the officers finished with it. The backlog chart and
                  "closed today" use it, so waiting for a citizen's confirmation is never counted against the team.

@@ -218,7 +218,7 @@ async def test_bulk_update_one_transaction(client):
     await client.post("/authority/incidents/bulk", json={"ids": ids, "status": "Acknowledged"}, headers=officer["headers"])
     async with engine.connect() as conn:
         assert await conn.scalar(text("SELECT count(*) FROM status_events WHERE to_status = 'Acknowledged'")) == 3
-    # bulk can resolve (one click, DECISIONS.md #79)
+    # bulk can resolve (one click, README.md (Design decisions) #79)
     assert (await client.post("/authority/incidents/bulk", json={"ids": ids, "status": "Resolved"}, headers=officer["headers"])).json()["updated"] == 3
     assert (await client.post("/authority/incidents/bulk", json={"ids": ids}, headers=officer["headers"])).status_code == 422
     assert (await client.post("/authority/incidents/bulk", json={"ids": ids, "status": "Resolved"}, headers=c["headers"])).status_code == 403

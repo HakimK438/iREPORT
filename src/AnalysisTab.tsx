@@ -33,7 +33,7 @@ function AnalysisMap({ lang, ward, category, setWard }: { lang: Lang; ward: stri
 }
 
 /* Every chart: a one-line takeaway as its title (computed from the data), a text summary for screen readers, and the same numbers as a table.
-   The charts are small hand-written SVG (no chart library): see DECISIONS.md. Colours never carry meaning alone; values are printed. */
+   The charts are small hand-written SVG (no chart library): see README.md (Design decisions). Colours never carry meaning alone; values are printed. */
 
 const COLOURS = { reported: "#c9a400", closed: "#2e7d6b", open: "#5b3fa0" };
 const CAT_COLOURS: Record<string, string> = { Pothole: "#b3261e", "Road Damage": "#b3261e", Garbage: "#2e7d6b", Streetlight: "#c9a400", "Water Leakage": "#1f6fb2", Drainage: "#1f6fb2", "Electrical Hazard": "#5b3fa0", Other: "#6b7a72" };
