@@ -2,9 +2,10 @@ import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "./Icon";
 import { AREAS, CATEGORY_NAMES } from "./store";
-import { api, type ApiUser, type ChipId, type Hotspot } from "./api";
+import { api, type ApiUser, type ChipId, type Hotspot, type Session } from "./api";
 import Brief, { DueText, Evidence, ResponseChip, StatusPill } from "./IncidentDetail";
 import MapDashboard from "./MapDashboard";
+import AreaTabs from "./AreaTabs";
 import { CategoryPhoto } from "./brand";
 import { tr, trf, type Lang, type StrKey } from "./i18n";
 import { catLabel, deptLabel } from "./i18nStaff";
@@ -34,16 +35,7 @@ export function hotspotReasons(h: Hotspot, lang: Lang = "en"): string[] {
   return why;
 }
 
-function HotspotCards({ items, onPick, lang }: { items: Hotspot[]; onPick: (area: string) => void; lang: Lang }) {
-  if (items.length === 0) return null;
-  return <><h3 className="ad-h sm">{tr(lang, "ad_hotspots")}</h3><div className="hot-grid">{items.map(h => <button className="hot-card" key={h.id} title={tr(lang, "s_showArea")} onClick={() => onPick(h.area)}>
-    <div className="hot-top"><b>{h.area}</b></div>
-    <p>{trf(lang, "v_hotLine", { n: h.open_incidents, m: 400 })}{h.critical > 0 ? ` · ${trf(lang, "v_hotEmergency", { n: h.critical })}` : ""}</p>
-    <p className="hot-cats">{h.categories.map(c => <span key={c.category} className="hot-cat"><CategoryPhoto category={c.category} className="cat-dot" label={false} />{catLabel(lang, c.category)} ×{c.count}</span>)}</p>
-  </button>)}</div></>;
-}
-
-export default function AuthorityDashboard({ user, lang = "en" }: { user: ApiUser; lang?: Lang }) {
+export default function AuthorityDashboard({ user, lang = "en", onSwitch }: { user: ApiUser; lang?: Lang; onSwitch?: (s: Session) => void }) {
   const qc = useQueryClient();
   const [tab, setTab] = useState<"complaints" | "analysis">("complaints");
   const [cat, setCat] = useState("");
@@ -67,7 +59,6 @@ export default function AuthorityDashboard({ user, lang = "en" }: { user: ApiUse
   });
   // Chip counts use the same ward / category / search filters as the list, so a chip's number equals the list total.
   const stats = useQuery({ queryKey: ["authority", "stats", base], queryFn: () => api.authorityStats(base), refetchInterval: 20_000 });
-  const hot = useQuery({ queryKey: ["authority", "hotspots"], queryFn: () => api.hotspots(4), refetchInterval: 20_000, enabled: tab === "complaints" });
   const [, tick] = useState(0);
   useEffect(() => { const t = window.setInterval(() => tick(n => n + 1), 5000); return () => window.clearInterval(t); }, []);
   const updatedAgo = list.dataUpdatedAt ? Math.round((Date.now() - list.dataUpdatedAt) / 1000) : null;
@@ -102,6 +93,8 @@ export default function AuthorityDashboard({ user, lang = "en" }: { user: ApiUse
   return <main className="page section ad">
     <div className="page-heading"><div><span className="eyebrow">{tr(lang, "ad_eyebrow")}</span><h1>{tr(lang, "ad_title")}</h1><p>{tr(lang, "ad_welcome")}, {user.name} · {deptLabel(lang, user.department)} · {user.employee_id}</p></div></div>
 
+    {onSwitch && <AreaTabs onSwitch={onSwitch} />}
+
     <div className="ad-tabs" role="tablist" aria-label={tr(lang, "ad_title")}>
       <button role="tab" id="tab-complaints" aria-selected={tab === "complaints"} aria-controls="panel-complaints" className={tab === "complaints" ? "active" : ""} onClick={() => setTab("complaints")}>{tr(lang, "an_tabComplaints")}</button>
       <button role="tab" id="tab-analysis" aria-selected={tab === "analysis"} aria-controls="panel-analysis" className={tab === "analysis" ? "active" : ""} onClick={() => setTab("analysis")}>{tr(lang, "an_tabAnalysis")}</button>
@@ -115,20 +108,22 @@ export default function AuthorityDashboard({ user, lang = "en" }: { user: ApiUse
         <label className="ad-search"><Icon name="search" size={18} /><input value={search} onChange={e => setSearch(e.target.value)} maxLength={100} placeholder={tr(lang, "ad_search")} aria-label={tr(lang, "ad_search")} /></label>
         <select value={area} onChange={e => setArea(e.target.value)} aria-label={tr(lang, "ad_allAreas")}><option value="">{tr(lang, "ad_allAreas")}</option>{AREAS.map(a => <option key={a}>{a}</option>)}</select>
         <select value={cat} onChange={e => setCat(e.target.value)} aria-label={tr(lang, "s_category")}><option value="">{tr(lang, "m_allCats")}</option>{CATEGORY_NAMES.map(c => <option key={c} value={c}>{catLabel(lang, c)}</option>)}</select>
-        <select value={response} onChange={e => setResponse(e.target.value)} aria-label={tr(lang, "v_responseFilter")}><option value="">{tr(lang, "v_allResponses")}</option>{(["Emergency", "Urgent", "Routine", "Planned"] as const).map(r => <option key={r} value={r}>{tr(lang, `resp_${r}` as StrKey)}</option>)}</select>
         <select value={sort} onChange={e => setSort(e.target.value as Sort)} aria-label={tr(lang, "v_sort")}><option value="priority">{tr(lang, "v_sortUrgent")}</option><option value="due">{tr(lang, "v_sortDue")}</option><option value="newest">{tr(lang, "ad_sortNew")}</option><option value="oldest">{tr(lang, "ad_sortOld")}</option><option value="affected">{tr(lang, "v_sortCitizens")}</option></select>
       </div>
 
       <details className="ad-fold" open onToggle={e => { if ((e.currentTarget as HTMLDetailsElement).open) setMapOpen(true); }}>
         <summary><Icon name="map" size={16} /> {tr(lang, "v_mapSummary")}</summary>
-        {mapOpen && <><MapDashboard mode="authority" lang={lang} />
-          <HotspotCards lang={lang} items={hot.data?.items ?? []} onPick={a => { if ((AREAS as readonly string[]).includes(a)) { setArea(a); } }} /></>}
+        {mapOpen && <MapDashboard mode="authority" lang={lang} />}
       </details>
 
       <div className="chips" role="group" aria-label={tr(lang, "c_label")}><div className="chip-grp">{CHIPS.filter(c => c.id !== "overdue" && c.id !== "unassigned").map(c => <button key={c.id} className={`chip-btn${view === c.id ? " active" : ""}${c.id === "overdue" ? " red" : ""}${c.id === "unassigned" ? " amber" : ""}`} aria-pressed={view === c.id} onClick={() => setView(c.id)}>
           <span>{tr(lang, c.key)}</span><b>{s ? s.chips[c.id] : "–"}</b></button>)}</div>
       <div className="chip-grp attn">{CHIPS.filter(c => c.id === "overdue" || c.id === "unassigned").map(c => <button key={c.id} className={`chip-btn${view === c.id ? " active" : ""}${c.id === "overdue" ? " red" : ""}${c.id === "unassigned" ? " amber" : ""}`} aria-pressed={view === c.id} onClick={() => setView(c.id)}>
           <span>{tr(lang, c.key)}</span><b>{s ? s.chips[c.id] : "–"}</b></button>)}</div></div>
+      <div className="prio-row" role="group" aria-label={tr(lang, "ad_priority")}>
+        {([["", tr(lang, "ad_allPriorities")], ["Emergency", tr(lang, "resp_Emergency")], ["Urgent", tr(lang, "resp_Urgent")], ["Routine", tr(lang, "resp_Routine")], ["Planned", tr(lang, "resp_Planned")]] as const).map(([r, label]) =>
+          <button key={r || "all"} className={`chip-btn${response === r ? " active" : ""}${r === "Emergency" ? " red" : ""}`} aria-pressed={response === r} onClick={() => setResponse(r)}><span>{label}</span></button>)}
+      </div>
       <p className="muted-line ad-updated" aria-live="polite">{s ? `${trf(lang, "v_emergencyOpen", { n: s.emergency_open })} · ${trf(lang, "v_dueToday", { n: s.due_today })} · ` : ""}{updatedAgo === null ? tr(lang, "s_loading") : updatedAgo < 8 ? tr(lang, "ad_justNow") : `${tr(lang, "s_updatedAgo")} ${updatedAgo} ${tr(lang, "s_secAgo")}`}</p>
 
       <h2 className="ad-h sm">{tr(lang, "ad_list")}</h2>
@@ -163,7 +158,6 @@ export default function AuthorityDashboard({ user, lang = "en" }: { user: ApiUse
       {selected.length > 0 && <div className="ad-bulk" role="region" aria-label={tr(lang, "v_bulkRegion")}>
         <b>{selected.length} {tr(lang, "s_selected")}</b>
         <button className="secondary compact" disabled={bulkMut.isPending} onClick={() => bulkMut.mutate({ ids, status: "Acknowledged" })}>{tr(lang, "v_a_acknowledge")}</button>
-        <button className="secondary compact" disabled={bulkMut.isPending} onClick={() => bulkMut.mutate({ ids, status: "Resolved" })}>{tr(lang, "v_a_resolve")}</button>
         <button className="secondary compact" onClick={() => setBulkPanel(bulkPanel === "assign" ? null : "assign")}>{tr(lang, "v_a_assign")}</button>
         <button className="secondary compact" onClick={() => setBulkPanel(bulkPanel === "schedule" ? null : "schedule")}>{tr(lang, "v_a_schedule")}</button>
         <button className="secondary compact" onClick={() => setBulkPanel(bulkPanel === "message" ? null : "message")}>{tr(lang, "s_message")}</button>

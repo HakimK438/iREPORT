@@ -89,10 +89,11 @@ export interface AuthorityRow extends IncidentPublic {
   priority_score: number; risk: number; response: ResponseCat; response_hours: number; due_at: string | null; overdue: boolean; overdue_days: number;
   scheduled_for: string | null; reopen_count: number; status_reason: string | null; assignee: Assignee | null; people_estimate: string | null;
   department: string | null; lat: number | null; lng: number | null; location_source: string | null; ai: AiSummary; nlp: Nlp | null; citizen_message: string | null;
+  needs_review: boolean; review_reason: string | null;
 }
 export interface Hotspot { id: number; incident_count: number; incident_ids: string[]; area: string; open_incidents: number; critical: number; affected: number; unique_citizens: number; confirmations: number; priority_sum: number; impact_score: number; categories: { category: string; count: number }[]; main_problems: string[]; lat: number; lng: number }
 export interface AdminOverview { unresolved_critical: number; departments: { department: string; open: number; critical: number; resolved: number }[]; categories: { category: string; open: number; share_pct: number; recommended_department: string | null; recommendation: string }[]; hotspots: Hotspot[] }
-export interface MapIncident { id: string; public_id: string; title: string; category: string; area: string | null; severity: Severity; status: Status; priority_score: number; risk: number; response: ResponseCat; due_at: string | null; overdue: boolean; overdue_days: number; assigned: boolean; affected_count: number; created_at: string; lat: number; lng: number; cluster: number | null }
+export interface MapIncident { id: string; public_id: string; title: string; category: string; area: string | null; severity: Severity; status: Status; priority_score: number; risk: number; response: ResponseCat; due_at: string | null; overdue: boolean; overdue_days: number; assigned: boolean; affected_count: number; created_at: string; lat: number; lng: number; cluster: number | null; thumb_url: string | null }
 export interface MapCluster { id: number; size: number; lat: number; lng: number; radius_m: number; critical: number; priority_sum: number; categories: { category: string; count: number }[]; areas: string[]; incident_ids: string[]; name: string }
 export interface MapArea { area: string; total: number; open: number; critical: number; resolved: number; categories: { category: string; count: number }[]; lat: number; lng: number }
 export interface MapData { incidents: MapIncident[]; clusters: MapCluster[]; areas: MapArea[]; truncated: boolean; method: { name: string; engine: string; eps_m: number; min_points: number; scope: string } }
@@ -113,11 +114,22 @@ export interface Brief extends AuthorityRow {
   timeline: HistoryEvent[]; messages: Msg[];
 }
 export type AuthorityDetail = Brief;
-export type ChipId = "all" | "new" | "acknowledged" | "scheduled" | "in_progress" | "resolved" | "closed" | "overdue" | "unassigned";
+export type ChipId = "all" | "mine" | "review" | "new" | "acknowledged" | "scheduled" | "in_progress" | "resolved" | "closed" | "overdue" | "unassigned";
 export interface AuthorityStats {
-  total: number; open: number; overdue: number; unassigned: number; due_today: number; emergency_open: number; urgent_open: number; new_24h: number;
+  total: number; open: number; overdue: number; unassigned: number; due_today: number; emergency_open: number; urgent_open: number; moderate_open: number; routine_open: number; new_24h: number;
   by_status: Record<string, number>; chips: Record<ChipId, number>;
   per_category: { category: string; total: number; open: number }[]; per_ward: { area: string | null; total: number; open: number }[];
+}
+export interface AdminDash {
+  as_of: string;
+  summary: { total: number; open: number; resolved: number; critical: number; high: number; moderate: number; routine: number; overdue: number; unassigned: number; awaiting_citizen: number; needs_review: number;
+    new_7d: number; prev_7d: number; reports: number; citizens: number; pending_approvals: number; officers: number; resolution_rate: number | null; on_time_pct: number | null; reopen_pct: number | null; median_days: number | null };
+  weeks: { week: string; reported: number; closed: number; open_at_end: number }[];
+  categories: { category: string; total: number; open: number; high_risk: number }[];
+  departments: { department: string; total: number; open: number; high_risk: number; overdue: number; resolved: number; on_time: number; on_time_pct: number | null }[];
+  areas: { area: string; total: number; open: number; high_risk: number; overdue: number; resolved: number; unassigned: number; resolution_rate: number }[];
+  officers: { id: string; name: string; department: string | null; area: string | null; open: number; overdue: number; resolved: number; median_fix_hours: number | null }[];
+  hotspots: Hotspot[];
 }
 export interface Officer { id: string; name: string; department: string | null; ward: string | null; is_me: boolean }
 export interface NearbyCheck { radius_m: number; mine: { id: string; public_id: string; category: string; status: Status; reported_at: string } | null; others: { id: string; public_id: string; category: string; title: string; status: Status; affected_count: number; distance_m: number; confirmed_by_me: boolean }[] }
@@ -178,13 +190,16 @@ export const api = {
   authorityMap: () => request<MapData>("/authority/map"),
   adminMap: () => request<MapData>("/admin/map"),
   adminIncident: (id: string) => request<AuthorityDetail>(`/admin/incidents/${id}`),
+  authorityAreas: () => request<{ items: { area: string; officers: number; is_mine: boolean }[] }>("/authority/areas"),
   authorityStats: (p: Record<string, string | undefined> = {}) => request<AuthorityStats>(`/authority/stats${qs(p)}`),
   officers: () => request<{ items: Officer[] }>("/authority/officers"),
   authorityDetail: (id: string) => request<AuthorityDetail>(`/authority/incidents/${id}`),
   authorityUpdate: (id: string, body: UpdateBody) => request<{ status: Status }>(`/authority/incidents/${id}/update`, { method: "POST", body }),
-  authorityBulk: (body: { ids: string[]; status?: "Acknowledged" | "Scheduled" | "Resolved"; message?: string; assigned_to?: string; scheduled_for?: string }) =>
+  authorityBulk: (body: { ids: string[]; status?: "Acknowledged" | "Scheduled"; message?: string; assigned_to?: string; scheduled_for?: string }) =>
     request<{ updated: number; skipped: { id: string; code: string; message: string }[] }>("/authority/incidents/bulk", { method: "POST", body }),
 
+  authorityReview: (id: string, decision: "genuine" | "fake", note?: string) => request<{ decision: string }>(`/authority/incidents/${id}/review`, { method: "POST", body: { decision, note } }),
+  adminPerformance: () => request<AdminDash>("/admin/performance"),
   adminAuthorities: (approval?: string) => request<AdminAuthority[]>(`/admin/authorities${qs({ approval })}`),
   adminDecide: (id: string, decision: "approve" | "reject" | "revoke") => request<AdminAuthority>(`/admin/authorities/${id}/decision`, { method: "POST", body: { decision } }),
   adminStats: () => request<AdminStats>("/admin/stats"),

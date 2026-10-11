@@ -3,9 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { Icon } from "./Icon";
 import { isOpen } from "./store";
 import { api, type MapIncident } from "./api";
-import Brief, { DueText, ResponseChip, StatusPill } from "./IncidentDetail";
-import { CategoryPhoto, MERGED_CATEGORY } from "./brand";
-import { tr, trf, type Lang, type StrKey } from "./i18n";
+import Brief, { DueText, Evidence, ResponseChip, StatusPill } from "./IncidentDetail";
+import { MERGED_CATEGORY } from "./brand";
+import { tr, trf, type Lang } from "./i18n";
 import { catLabel } from "./i18nStaff";
 import { areaSlug } from "./facts";
 
@@ -13,7 +13,6 @@ import { areaSlug } from "./facts";
 const ProblemMap = lazy(() => import("./ProblemMap"));
 
 const OUTSIDE = "Outside mapped areas";
-const SYMBOL: Record<string, string> = { Emergency: "critical.png", Urgent: "high_risk.png", Routine: "moderate_risk.png", Planned: "daily_routine.png" };
 
 /** Picture of the area (public/areas/<area>.png); nothing when the area has none, so the card just shrinks back to text. */
 function AreaThumb({ area }: { area: string }) {
@@ -21,7 +20,6 @@ function AreaThumb({ area }: { area: string }) {
   if (bad) return null;
   return <img className="area-thumb" src={`${import.meta.env.BASE_URL}areas/${areaSlug(area)}.png`} alt="" loading="lazy" onError={() => setBad(true)} />;
 }
-const LEVELS: [string, string][] = [["Emergency", "#b3261e"], ["Urgent", "#e8710a"], ["Routine", "#c9a400"], ["Planned", "#2e7d6b"]];
 const SHOWN = 24;
 
 /** Area-wise map of every civic problem. Clicking a card or a point opens the full problem detail.
@@ -76,12 +74,11 @@ export default function MapDashboard({ mode, lang = "en" }: { mode: "authority" 
 
     {data && showClusters && <div className="md-ml"><span>{trf(lang, "m_clusterNote", { n: data.method.min_points, m: data.method.eps_m })} {clusters.length === 0 ? tr(lang, "m_noClusters") : `${clusters.length} ${tr(lang, "m_clustersFound")}`}</span></div>}
 
-    <div className="md-legend" aria-label="Legend">{LEVELS.map(([l, c]) => <span key={l} className="lg-sev" style={{ borderColor: c }}><img src={`${import.meta.env.BASE_URL}symbols/${SYMBOL[l]}`} alt="" width={24} height={24} />{tr(lang, `resp_${l}` as StrKey)}</span>)}<span><i className="md-resolved" />{tr(lang, "m_resolved")}</span><span><i className="md-ring" />{tr(lang, "m_cluster")}</span></div>
     {q.isPending && <div className="md-cards">{[0, 1, 2].map(k => <div key={k} className="md-card skeleton-card"><div className="skeleton-line w75" /><div className="skeleton-line w50" /></div>)}</div>}
     {q.isSuccess && visible.length === 0 && <div className="empty-note"><Icon name="check" /><span><b>{tr(lang, "m_noneHere")}</b></span></div>}
     <div className="md-cards">{visible.slice(0, more).map(i => <button key={i.id} className={`md-card lvl-${i.response.toLowerCase()}${selectedId === i.id ? " sel" : ""}${isOpen(i.status) ? "" : " done"}`} onClick={() => setSelectedId(i.id)} aria-label={`${tr(lang, "m_openDetails")}: ${i.title}`}>
       <span className="mc-top">
-        <CategoryPhoto category={i.category} className="cat-photo sm" label={false} />
+        <Evidence url={i.thumb_url} category={i.category} alt={i.title} className="cat-photo sm" />
         <span className="mc-title"><b>{i.title}</b><small><Icon name="pin" size={13} /> {i.area ?? OUTSIDE}<i>{i.public_id}</i></small></span>
       </span>
       <span className="mc-foot"><ResponseChip response={i.response} lang={lang} /><DueText row={i} lang={lang} /></span>

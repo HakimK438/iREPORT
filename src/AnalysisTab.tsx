@@ -1,7 +1,7 @@
 import { lazy, Suspense, useMemo, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Icon } from "./Icon";
-import { analytics, api, downloadCsv, type AnBacklog, type AnSeason, type AnType, type AnWard } from "./api";
+import { analytics, api, downloadCsv, type AnBacklog, type AnSeason, type AnType, type AnWard, type AnOverview } from "./api";
 import { AREAS, CATEGORY_NAMES, isOpen } from "./store";
 import { MERGED_CATEGORY } from "./brand";
 import { tr, trf, type Lang, type StrKey } from "./i18n";
@@ -154,6 +154,38 @@ export function seasonTakeaway(lang: Lang, items: AnSeason["items"]): string {
   return trf(lang, "an_t_season", { category: catLabel(lang, top[0]), month: new Date(`${peak.month}-01`).toLocaleDateString(LOCALE[lang], { month: "long", year: "numeric" }) });
 }
 
+const ACTION: Record<string, string> = {
+  Pothole: "Send the roads crew with asphalt patch material.", "Road Damage": "Inspect the structure first, then schedule the repair.", Garbage: "Add an extra pickup and check the collection route.",
+  Drainage: "Clear the drain before the next rain.", "Water Leakage": "Ask the water department to close the valve and repair the pipe.", "Electrical Hazard": "Make it safe first: isolate the line, then repair.",
+  Streetlight: "Replace the lamp or check the feeder.", Other: "Inspect the site and route it to the right department.",
+};
+
+/** "What this means for you": the few findings an officer can act on today, in plain words, each with its number and a next step. */
+function Insights({ lang, o, w, t, b, prio }: { lang: Lang; o: AnOverview | undefined; w: AnWard | undefined; t: AnType | undefined; b: AnBacklog | undefined; prio: { critical: number; high: number; moderate: number; routine: number } | undefined }) {
+  const cards: { key: string; big: string; line: string; todo: string; tone?: string }[] = [];
+  const worst = w ? [...w.items].sort((a, c) => c.open - a.open || c.overdue - a.overdue)[0] : undefined;
+  if (worst && worst.open > 0) cards.push({ key: "area", big: String(worst.open), line: `${worst.ward} has the most open complaints${worst.overdue ? `, ${worst.overdue} of them overdue` : ""}.`, todo: "Plan this area's crews first.", tone: worst.overdue ? "danger" : "" });
+  const top = t ? [...t.items].sort((a, c) => c.open - a.open)[0] : undefined;
+  const openAll = t ? t.items.reduce((a, i) => a + i.open, 0) : 0;
+  if (top && top.open > 0 && openAll > 0) cards.push({ key: "type", big: `${Math.round((100 * top.open) / openAll)}%`, line: `of open complaints are ${catLabel(lang, top.category).toLowerCase()} problems (${top.open} of ${openAll}).`, todo: ACTION[top.category] ?? ACTION.Other });
+  if (o && o.overdue > 0) cards.push({ key: "overdue", big: String(o.overdue), line: `complaint${o.overdue === 1 ? " is" : "s are"} past the deadline.`, todo: "Clear these before taking new work.", tone: "danger" });
+  if (o && o.pct_within_sla !== null && o.pct_within_sla !== undefined) cards.push({ key: "sla", big: `${o.pct_within_sla}%`, line: `of fixed complaints were finished on time${o.median_days_to_close != null ? `; the typical fix takes ${o.median_days_to_close} day${o.median_days_to_close === 1 ? "" : "s"}` : ""}.`, todo: o.pct_within_sla >= 80 ? "Good. Keep the same pace." : "Assign new complaints the same day to win back time.", tone: o.pct_within_sla >= 80 ? "good" : o.pct_within_sla < 50 ? "danger" : "" });
+  if (b && b.weeks.length >= 2) {
+    const diff = b.weeks[b.weeks.length - 1].open_at_end - b.weeks[0].open_at_end;
+    cards.push({ key: "trend", big: diff === 0 ? "=" : diff > 0 ? `+${diff}` : String(diff), line: diff > 0 ? "more open complaints than at the start of this period. The backlog is growing." : diff < 0 ? "fewer open complaints than at the start of this period. The backlog is shrinking." : "open complaints, unchanged over this period.", todo: diff > 0 ? "Close at least as many as arrive each week." : "Keep closing faster than new ones arrive.", tone: diff > 0 ? "danger" : diff < 0 ? "good" : "" });
+  }
+  const mix = prio ? [{ label: tr(lang, "resp_Emergency"), value: prio.critical, colour: "#b3261e" }, { label: tr(lang, "resp_Urgent"), value: prio.high, colour: "#e8710a" }, { label: tr(lang, "resp_Routine"), value: prio.moderate, colour: "#c9a400" }, { label: tr(lang, "resp_Planned"), value: prio.routine, colour: "#2e7d6b" }] : [];
+  const mixMax = Math.max(1, ...mix.map(m => m.value));
+  if (cards.length === 0 && mix.length === 0) return null;
+  return <section className="an-insights" aria-label="What this means for you">
+    <h2 className="ad-h sm">What this means for you</h2>
+    <div className="an-cards big">{cards.map(c => <div key={c.key} className={c.tone}><b>{c.big}</b><p>{c.line}</p><small>{c.todo}</small></div>)}</div>
+    {mix.length > 0 && <figure className="an-chart"><figcaption><h3>{prio && prio.critical + prio.high > 0 ? `${prio.critical + prio.high} open complaints need attention this week (critical or high risk)` : "No critical or high-risk complaints are open"}</h3></figcaption>
+      <div className="an-prio">{mix.map(m => <div key={m.label} className="an-prio-row"><span>{m.label}</span><span className="track"><i style={{ width: `${(m.value / mixMax) * 100}%`, background: m.colour }} /></span><b>{m.value}</b></div>)}</div>
+      <p className="sr-only">{mix.map(m => `${m.label}: ${m.value}`).join(", ")}</p></figure>}
+  </section>;
+}
+
 export default function AnalysisTab({ lang, ward, category, setWard, setCategory, openList }: { lang: Lang; ward: string; category: string; setWard: (w: string) => void; setCategory: (c: string) => void; openList: () => void }) {
   const [from, setFrom] = useState(""), [to, setTo] = useState("");
   const [exporting, setExporting] = useState(false), [exportError, setExportError] = useState("");
@@ -167,6 +199,7 @@ export default function AnalysisTab({ lang, ward, category, setWard, setCategory
   const byType = useQuery({ queryKey: ["authority", "analytics", "by-type", f], queryFn: () => analytics.byType(f), staleTime: stale });
   const perf = useQuery({ queryKey: ["authority", "analytics", "performance", f], queryFn: () => analytics.performance(f), staleTime: stale });
   const season = useQuery({ queryKey: ["authority", "analytics", "season", fixed], queryFn: () => analytics.season(fixed), staleTime: stale });
+  const stats = useQuery({ queryKey: ["authority", "stats", { analysis: true }], queryFn: () => api.authorityStats({}), staleTime: stale });
   const failed = [today, overview, backlog, byWard, byType, perf, season].find(q => q.isError);
   const na = (v: number | null | undefined, suffix = "") => (v === null || v === undefined ? "—" : `${v}${suffix}`);
   const tbl = (head: string[], rows: (string | number)[][]) => <div className="table-wrap"><table><thead><tr>{head.map(h => <th key={h} scope="col">{h}</th>)}</tr></thead><tbody>{rows.map((r, i) => <tr key={i}>{r.map((c, j) => <td key={j}>{c}</td>)}</tr>)}</tbody></table></div>;
@@ -192,6 +225,8 @@ export default function AnalysisTab({ lang, ward, category, setWard, setCategory
     </div>
     {exportError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {exportError}</div>}
     {failed && <div className="empty-note error"><Icon name="alert" /><span><b>{tr(lang, "s_loadFail")}</b><small>{(failed.error as Error).message}</small></span><button className="secondary compact" onClick={() => failed.refetch()}>{tr(lang, "s_retry")}</button></div>}
+
+    <Insights lang={lang} o={o} w={w} t={t} b={b} prio={stats.data ? { critical: stats.data.emergency_open, high: stats.data.urgent_open, moderate: stats.data.moderate_open, routine: stats.data.routine_open } : undefined} />
 
     <section className="an-today" aria-label={tr(lang, "an_today")}><h2 className="ad-h sm">{ward ? trf(lang, "an_todayWard", { ward }) : tr(lang, "an_today")}</h2>
       <div className="an-cards"><div><small>{tr(lang, "an_newToday")}</small><b>{na(today.data?.new_today)}</b></div><div><small>{tr(lang, "an_closedToday")}</small><b>{na(today.data?.closed_today)}</b></div><div className="danger"><small>{tr(lang, "an_nowOverdue")}</small><b>{na(today.data?.overdue)}</b></div></div></section>
@@ -238,11 +273,11 @@ export default function AnalysisTab({ lang, ward, category, setWard, setCategory
         <tbody>{[...p.departments, ...p.wards.map(x => ({ ...x, name: `${x.name} (${tr(lang, "an_ward")})` }))].map(r => <tr key={r.name}><th scope="row">{r.name}</th><td>{r.resolved}</td><td className={r.pct_within_sla < 50 ? "red" : ""}>{r.pct_within_sla}%</td><td>{r.reopen_rate}%</td></tr>)}</tbody></table></div>
     </Chart>}
 
-    {s && s.items.length > 0 && <Chart lang={lang} title={seasonTakeaway(lang, s.items)} summary={`${seasonTakeaway(lang, s.items)}. ${trf(lang, "an_s_season", { n: s.items.reduce((a, i) => a + i.n, 0) })}`}
+    {s && s.items.length > 0 && <details className="an-more"><summary>More detail: problems by month</summary><Chart lang={lang} title={seasonTakeaway(lang, s.items)} summary={`${seasonTakeaway(lang, s.items)}. ${trf(lang, "an_s_season", { n: s.items.reduce((a, i) => a + i.n, 0) })}`}
       table={tbl([tr(lang, "an_month"), tr(lang, "s_category"), tr(lang, "an_total")], s.items.map(i => [i.month, catLabel(lang, i.category), i.n]))}>
       <SeasonChart items={s.items} lang={lang} />
       <ul className="an-legend">{[...new Set(s.items.map(i => i.category))].map(c => <li key={c}><i style={{ background: CAT_COLOURS[c] ?? "#6b7a72" }} />{catLabel(lang, c)}</li>)}</ul>
-    </Chart>}
+    </Chart></details>}
 
     <div className="report-sheet" aria-hidden="true">
       <div className="rp-head"><div><b>iREPORT</b><span>{tr(lang, "r_title")}</span></div><small>{tr(lang, "r_generated")}: {new Date().toLocaleString(LOCALE[lang], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</small></div>

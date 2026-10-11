@@ -28,21 +28,23 @@ const SevImg = ({ response, size }: { response: ResponseCat; size: number }) => 
 export const ResponseChip = ({ response, lang }: { response: ResponseCat; lang: Lang }) => <span className={`resp resp-${response.toLowerCase()}`} title={tr(lang, `resp_${response}_tip` as StrKey)}><SevImg response={response} size={24} />{tr(lang, `resp_${response}` as StrKey)}</span>;
 
 /** "Due 12 Oct" or "Overdue 2 days" (red). Nothing for a complaint that is no longer open, except Resolved: awaiting the citizen. */
-export function DueText({ row, lang }: { row: { status: string; due_at: string | null; overdue: boolean; overdue_days: number }; lang: Lang }) {
+export function DueText({ row, lang }: { row: { status: string; due_at: string | null; overdue: boolean; overdue_days: number; created_at?: string }; lang: Lang }) {
+  const when = (iso: string) => new Date(iso).toLocaleString(LOCALE[lang], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const tip = row.created_at && row.due_at ? `${when(row.created_at)} → ${when(row.due_at)}` : undefined; // reported → deadline
   if (row.status === "Resolved") return <span className="due">{tr(lang, "v_awaiting")}</span>;
   if (!isOpen(row.status) || !row.due_at) return null;
   if (row.overdue) {
     const n = row.overdue_days;
-    return <span className="due red">{n < 1 ? tr(lang, "v_overdueToday") : trf(lang, "v_overdueBy", { n, unit: tr(lang, n === 1 ? "s_day" : "s_days") })}</span>;
+    return <span className="due red" title={tip}>{n < 1 ? tr(lang, "v_overdueToday") : trf(lang, "v_overdueBy", { n, unit: tr(lang, n === 1 ? "s_day" : "s_days") })}</span>;
   }
-  return <span className="due">{trf(lang, "v_due", { date: shortDate(row.due_at, lang) })}</span>;
+  return <span className="due" title={tip}>{trf(lang, "v_due", { date: shortDate(row.due_at, lang) })}</span>;
 }
 
 /** A photo from the citizen when there is one, otherwise the picture of the category, so a card is never blank. */
 export function Evidence({ url, category, alt, className }: { url: string | null | undefined; category: string; alt: string; className?: string }) {
   const [bad, setBad] = useState<string | null>(null);
   if (url && bad !== url) return <img className={className} src={url} alt={alt} loading="lazy" onError={() => setBad(url)} />;
-  return <CategoryPhoto category={category} className={`cat-photo ${className ?? ""}`} />;
+  return <span className={`no-photo ${className ?? ""}`} role="img" aria-label={alt}><Icon name="camera" size={18} /><small>No photo</small></span>;
 }
 
 export function mapSrc(lat: number, lng: number) {
@@ -84,7 +86,7 @@ function AreaPhoto({ area }: { area: string | null }) {
   return <figure className="area-photo"><img src={`${BASE}areas/${areaSlug(area)}.png`} alt={area} loading="lazy" onError={() => setBad(area)} /><figcaption>{area}</figcaption></figure>;
 }
 
-type Panel = null | "assign" | "schedule" | "hold" | "reject" | "duplicate" | "transfer";
+type Panel = null | "assign" | "schedule" | "hold" | "reject" | "duplicate" | "transfer" | "resolve";
 
 export default function Brief({ id, lang = "en", readOnly = false, onClose }: { id: string; lang?: Lang; readOnly?: boolean; onClose?: () => void }) {
   const qc = useQueryClient();
@@ -98,12 +100,14 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
   const [officer, setOfficer] = useState("");
   const [category, setCategory] = useState("");
   const [copied, setCopied] = useState(false);
+  const [reviewNote, setReviewNote] = useState("");
   const officers = useQuery({ queryKey: ["authority", "officers"], queryFn: api.officers, enabled: !readOnly && (panel === "assign"), staleTime: 5 * 60_000 });
 
   const refresh = () => {
     for (const key of [["authority", "list"], ["authority", "stats"], ["authority", "incident", id], ["authority", "map"], ["authority", "analytics"]]) qc.invalidateQueries({ queryKey: key });
     setPanel(null); setText(""); setReply("");
   };
+  const review = useMutation({ mutationFn: (v: { decision: "genuine" | "fake" }) => api.authorityReview(id, v.decision, reviewNote.trim() || undefined), onSuccess: refresh });
   const act = useMutation({ mutationFn: (body: Parameters<typeof api.authorityUpdate>[1]) => api.authorityUpdate(id, body), onSuccess: refresh });
 
   if (q.isPending) return <div className="brief" aria-busy="true"><div className="skeleton-line w75" /><div className="skeleton-line w50" /><div className="skeleton-line w90" /></div>;
@@ -113,6 +117,15 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
   const status = d.status as Status;
   const action: NextAction = readOnly ? null : nextAction(d);
   const open = isOpen(status);
+  const stamp = (iso: string) => new Date(iso).toLocaleString(LOCALE[lang], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const span = (ms: number) => { const h = Math.max(1, Math.round(ms / 3_600_000)); return h >= 48 ? `${Math.round(h / 24)} ${tr(lang, "s_days")}` : `${h} ${tr(lang, h === 1 ? "v_hourWord" : "v_hoursWord")}`; };
+  const firstOfficerStep = d.timeline.find(h => h.by && h.status !== "Reported");
+  const basis = {
+    rule: d.due_at ? trf(lang, "v_basisRule", { rep: stamp(d.created_at), level: tr(lang, `resp_${d.response}` as StrKey), within: span(d.response_hours * 3_600_000), due: stamp(d.due_at) }) : "",
+    state: !d.due_at || !open ? "" : d.overdue ? trf(lang, "v_basisLate", { late: span(Date.now() - new Date(d.due_at).getTime()), status: staffStatus(lang, status) }) : trf(lang, "v_basisLeft", { left: span(new Date(d.due_at).getTime() - Date.now()) }),
+    acted: firstOfficerStep ? trf(lang, "v_basisActed", { when: stamp(firstOfficerStep.at) }) : (open ? tr(lang, "v_basisNobody") : ""),
+    owner: d.assignee ? trf(lang, "v_basisOwner", { name: d.assignee.name }) : tr(lang, "v_basisNoOwner"),
+  };
   const reasons = d.reasons.slice(0, 3);
   const photoDisagrees = !!d.ai.category && d.ai.source !== "text" && catLabel("en", d.ai.category) !== catLabel("en", d.category);
   const estimate = d.people_estimate === "few" ? tr(lang, "v_est_few") : d.people_estimate === "many" ? tr(lang, "v_est_many") : null;
@@ -122,8 +135,7 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
   const doPrimary = () => {
     if (action === "acknowledge") run({ status: "Acknowledged" });
     else if (action === "start" || action === "resume") run({ status: "In Progress" });
-    else if (action === "resolve") run({ status: "Resolved" });
-    else if (action) setPanel(action);
+    else if (action) setPanel(action); // "resolve" opens the note box: a fix is never closed without saying what was done
   };
   const copyLocation = async () => {
     const link = `https://maps.google.com/?q=${d.where.lat.toFixed(6)},${d.where.lng.toFixed(6)}`;
@@ -134,10 +146,11 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
     else if (panel === "schedule") run({ status: "Scheduled", scheduled_for: date });
     else if (panel === "hold") run({ status: "On Hold", reason: text.trim() });
     else if (panel === "reject") run({ status: "Rejected", reason: text.trim() });
+    else if (panel === "resolve") run({ status: "Resolved", reason: text.trim() });
     else if (panel === "duplicate") run({ status: "Duplicate", duplicate_of: text.trim() });
     else if (panel === "transfer") run({ status: "Transferred", category, reason: text.trim() });
   };
-  const panelReady = panel === "assign" ? !!(officer || officers.data?.items.length) : panel === "schedule" ? !!date : panel === "transfer" ? !!category && !!text.trim() : !!text.trim();
+  const panelReady = panel === "resolve" ? text.trim().length >= 5 : panel === "assign" ? !!(officer || officers.data?.items.length) : panel === "schedule" ? !!date : panel === "transfer" ? !!category && !!text.trim() : !!text.trim();
   const moreItems: { key: Panel | "ack" | "start" | "res"; label: StrKey }[] = [];
   if (!readOnly && open) {
     if (action !== "assign") moreItems.push({ key: "assign", label: d.assignee ? "v_m_reassign" : "v_a_assign" });
@@ -148,7 +161,7 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
     moreItems.push({ key: "reject", label: "v_m_reject" }, { key: "duplicate", label: "v_m_duplicate" }, { key: "transfer", label: "v_m_transfer" });
     if (action !== "resolve") moreItems.push({ key: "res", label: "v_a_resolve" });
   } else if (!readOnly && status === "Resolved") moreItems.push({ key: "start", label: "v_m_rework" });
-  const pickMore = (k: Panel | "ack" | "start" | "res") => { if (k === "ack") run({ status: "Acknowledged" }); else if (k === "start") run({ status: "In Progress" }); else if (k === "res") run({ status: "Resolved" }); else setPanel(k); };
+  const pickMore = (k: Panel | "ack" | "start" | "res") => { if (k === "ack") run({ status: "Acknowledged" }); else if (k === "start") run({ status: "In Progress" }); else if (k === "res") setPanel("resolve"); else setPanel(k); };
 
   return <div className={`brief tone-${t}`}>
     <header className="brief-head">
@@ -163,6 +176,22 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
         <p><span>{tr(lang, "v_sevReason")}:</span> {reasons[0] ? reasonText(lang, reasons[0]) : tr(lang, "v_whyNone")}</p>
         <p><span>{tr(lang, "v_sevAction")}:</span> {tr(lang, `resp_${d.response}_tip` as StrKey)}</p></div>
     </section>
+
+    {d.due_at && <section className="due-basis" aria-label={tr(lang, "v_deadline")}>
+      <b>{tr(lang, "v_deadline")}</b>
+      <p>{basis.rule}</p>
+      {basis.state && <p className={d.overdue ? "late" : ""}>{basis.state}</p>}
+      <p className="muted-line">{basis.acted} {basis.owner}</p>
+    </section>}
+
+    {d.needs_review && <section className="rv-panel" role="alert" aria-label={tr(lang, "rv_title")}>
+      <b><Icon name="alert" size={16} /> {tr(lang, "rv_title")}</b>
+      <p>{d.review_reason}</p>
+      {!readOnly && <><label className="fld"><span>{tr(lang, "rv_note")}</span><input value={reviewNote} maxLength={300} onChange={e => setReviewNote(e.target.value)} /></label>
+        <div className="act-row"><button className="primary compact" disabled={review.isPending} onClick={() => review.mutate({ decision: "genuine" })}>{tr(lang, "rv_genuine")}</button>
+          <button className="secondary compact" disabled={review.isPending} onClick={() => review.mutate({ decision: "fake" })}>{tr(lang, "rv_fake")}</button></div>
+        {review.isError && <div className="form-error" role="alert">{(review.error as Error).message}</div>}</>}
+    </section>}
 
     <section aria-label={tr(lang, "v_what")}>
       <h3>{tr(lang, "v_what")}</h3>
@@ -228,9 +257,9 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
       {panel && <div className="act-panel" role="group">
         {panel === "assign" && <label className="fld"><span>{tr(lang, "v_a_assign")}</span><select value={officer} onChange={e => setOfficer(e.target.value)}>{officers.data?.items.map(o => <option key={o.id} value={o.id}>{o.name}{o.is_me ? ` (${tr(lang, "v_me")})` : ""} · {deptLabel(lang, o.department)}</option>)}</select></label>}
         {panel === "schedule" && <label className="fld"><span>{tr(lang, "v_visitDate")}</span><input type="date" value={date} onChange={e => setDate(e.target.value)} /></label>}
-        {(panel === "hold" || panel === "reject" || panel === "transfer") && <>
+        {(panel === "hold" || panel === "reject" || panel === "transfer" || panel === "resolve") && <>
           {panel === "transfer" && <label className="fld"><span>{tr(lang, "v_correctCat")}</span><select value={category} onChange={e => setCategory(e.target.value)}><option value="">—</option>{[...CATEGORY_NAMES, "Road Damage", "Drainage"].filter(c => c !== d.category).map(c => <option key={c} value={c}>{catLabel(lang, c)}</option>)}</select></label>}
-          <label className="fld"><span>{tr(lang, "v_reason")}</span><textarea rows={2} maxLength={500} value={text} onChange={e => setText(e.target.value)} /></label></>}
+          <label className="fld"><span>{tr(lang, panel === "resolve" ? "v_resolveNote" : "v_reason")}</span><textarea rows={2} maxLength={500} value={text} onChange={e => setText(e.target.value)} /></label></>}
         {panel === "duplicate" && <label className="fld"><span>{tr(lang, "v_dupNo")}</span><input value={text} maxLength={30} onChange={e => setText(e.target.value)} placeholder="IR-20261009-00001" /></label>}
         <div className="act-row"><button className="primary" disabled={!panelReady || act.isPending} onClick={submitPanel}>{tr(lang, "v_confirm")}</button><button className="secondary" onClick={() => setPanel(null)}>{tr(lang, "v_cancel")}</button></div>
       </div>}
@@ -248,15 +277,18 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
       <div className={`ps-sev sev-${d.response.toLowerCase()}`}><SevImg response={d.response} size={34} /><div><b>{tr(lang, `resp_${d.response}` as StrKey)}</b><span>{tr(lang, "v_sevReason")}: {reasons[0] ? reasonText(lang, reasons[0]) : tr(lang, "v_whyNone")}</span><span>{tr(lang, "v_sevAction")}: {tr(lang, `resp_${d.response}_tip` as StrKey)}</span></div></div>
       <table className="ps-grid"><tbody>
         <tr><th>{tr(lang, "v_what")}</th><td colSpan={3}>{whatSentence(d, lang)}</td></tr>
-        <tr><th>{tr(lang, "s_category")}</th><td>{catLabel(lang, d.category)}</td><th>{tr(lang, "s_dept")}</th><td>{dept}</td></tr>
+        <tr><th>{tr(lang, "p_category")}</th><td>{catLabel(lang, d.category)}</td><th>{tr(lang, "s_dept")}</th><td>{dept}</td></tr>
         <tr><th>{tr(lang, "p_status")}</th><td>{staffStatus(lang, status)}</td><th>{tr(lang, "p_reported")}</th><td>{new Date(d.created_at).toLocaleString(LOCALE[lang], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</td></tr>
         <tr><th>{tr(lang, "p_dueBy")}</th><td>{d.due_at ? shortDate(d.due_at, lang) : "—"}{d.overdue ? ` (${tr(lang, "v_overdueToday")})` : ""}</td><th>{tr(lang, "p_citizens")}</th><td>{d.citizens ?? 1}</td></tr>
         <tr><th>{tr(lang, "p_assignedTo")}</th><td>{d.assignee ? `${d.assignee.name} · ${dept}, ${d.area ?? "—"}` : tr(lang, "v_unassigned")}</td><th>{tr(lang, "p_siteVisit")}</th><td>{d.scheduled_for ? shortDate(d.scheduled_for, lang) : "______"}</td></tr>
         <tr><th>{tr(lang, "v_where")}</th><td colSpan={3}>{[d.where.address, d.where.area].filter(Boolean).join(" · ") || tr(lang, "s_noArea")}<br /><small>{tr(lang, "p_gps")}: {d.where.lat.toFixed(5)}, {d.where.lng.toFixed(5)} · {navigateUrl(d.where.lat, d.where.lng)}</small></td></tr>
       </tbody></table>
+      {d.needs_review && <><h4>{tr(lang, "p_reviewNote")}</h4><p>{tr(lang, "rv_title")}: {d.review_reason}</p></>}
+      {d.status_reason && (status === "Resolved" || status === "Closed") && <><h4>{tr(lang, "p_resolution")}</h4><p>{d.status_reason}</p></>}
       {d.reasons.length > 0 && <><h4>{tr(lang, "v_why")}</h4><ul>{d.reasons.map((r, k) => <li key={k}>{reasonText(lang, r)} <i>({tr(lang, `v_src_${r.source}` as StrKey)})</i></li>)}</ul></>}
       {d.evidence.length > 0 && <><h4>{tr(lang, "p_reporters")}</h4><ul>{d.evidence.map((e, k) => <li key={k}><b>{e.reporter}</b>, {new Date(e.at).toLocaleString(LOCALE[lang], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}{e.description ? `: “${e.description}”` : ""}{e.citizen_message ? ` (${tr(lang, "ad_citizenSays")}: “${e.citizen_message}”)` : ""}</li>)}</ul>
         {d.evidence.some(e => e.photos.length > 0) && <div className="ps-photos">{d.evidence.flatMap(e => e.photos).slice(0, 4).map((ph, k) => <img key={k} src={ph.thumb_url} alt="" />)}</div>}</>}
+      {d.ai.category && <><h4>{tr(lang, "p_mlTitle")}</h4><p>{trf(lang, "p_mlLine", { category: catLabel(lang, d.ai.category), pct: d.ai.confidence != null ? Math.round(d.ai.confidence * 100) : "–" })}</p></>}
       {d.history_here.count > 0 && <><h4>{tr(lang, "v_histHere")}</h4><p>{trf(lang, "v_histLine", { n: d.history_here.count, category: catLabel(lang, d.category), radius: d.history_here.radius_m, days: d.history_here.days })} {tr(lang, "v_histCheck")}</p><ul>{d.history_here.items.map(h => <li key={h.public_id}>{h.public_id} · {shortDate(h.created_at, lang)} · {staffStatus(lang, h.status)}</li>)}</ul></>}
       {d.nearby_open.count > 0 && <><h4>{tr(lang, "v_nearby")}</h4><p>{trf(lang, "v_nearbyLine", { n: d.nearby_open.count, radius: d.nearby_open.radius_m })} {tr(lang, "v_sameCrew")}</p><ul>{d.nearby_open.items.map(n => <li key={n.id}>{n.public_id} · {catLabel(lang, n.category)} · {n.distance_m} m · {staffStatus(lang, n.status)}</li>)}</ul></>}
       {d.timeline.length > 0 && <><h4>{tr(lang, "v_timeline")}</h4><table className="ps-lines"><tbody>{d.timeline.map((h, k) => <tr key={k}><td>{new Date(h.at).toLocaleString(LOCALE[lang], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</td><td>{h.note ? h.reason : staffStatus(lang, h.status)}{!h.note && h.reason ? `: ${h.reason}` : ""}</td><td>{h.by ?? ""}</td></tr>)}</tbody></table></>}

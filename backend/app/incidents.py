@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import risk_config as cfg
 from . import status as status_mod
-from .ai import rules
+from .ai import pipeline, rules
 from .answers import flags_from_answers
 from .config import get_settings
 from .errors import ApiError
@@ -26,7 +26,7 @@ from .storage import get_storage
 ROW_SELECT = """
 SELECT i.id, i.public_id, c.name AS category, c.hazard_points, d.name AS department, w.name AS area, i.address_text, i.severity::text AS severity,
        i.status::text AS status, i.flags, i.affected_count, i.priority_score, i.risk, i.due_at, i.scheduled_for, i.reopen_count, i.status_reason,
-       i.assigned_to, au.name AS assignee_name, cz.n AS citizens, i.created_at, i.updated_at,
+       i.assigned_to, au.name AS assignee_name, i.needs_review, i.review_reason, cz.n AS citizens, i.created_at, i.updated_at,
        fr.problem_type, fr.ai_category, fr.ai_confidence, fr.ai_source, fr.ai_disagreement, fr.nlp, fr.citizen_message, fr.user_corrected, fr.location_source,
        fr.sample_confidence, fr.answers, fm.thumb_key, fm.storage_key {extra}
 FROM page i
@@ -96,6 +96,7 @@ def authority_row(row) -> dict:
         department=row.department, lat=getattr(row, "lat", None), lng=getattr(row, "lng", None),
         location_source=row.location_source, ai=ai_summary(row), nlp=row.nlp, citizen_message=row.citizen_message,
         people_estimate=(row.answers or {}).get("people"),
+        needs_review=row.needs_review, review_reason=row.review_reason,
     )
     return d
 
@@ -170,6 +171,7 @@ MAP_SQL = f"""
 SELECT i.id, i.public_id, c.name AS category, w.name AS area, i.address_text, i.severity::text AS severity, i.status::text AS status,
        i.priority_score, i.risk, i.due_at, i.assigned_to IS NOT NULL AS assigned, i.affected_count, i.created_at, ST_Y(i.location::geometry) AS lat, ST_X(i.location::geometry) AS lng,
        (SELECT r.problem_type FROM reports r WHERE r.incident_id = i.id ORDER BY r.created_at LIMIT 1) AS problem_type,
+       (SELECT m.thumb_key FROM reports r JOIN media m ON m.report_id = r.id WHERE r.incident_id = i.id AND r.duplicate_of_report_id IS NULL ORDER BY r.created_at, m.created_at LIMIT 1) AS thumb_key,
        CASE WHEN {open_sql('i')} THEN
          ST_ClusterDBSCAN(ST_Transform(i.location::geometry, 32643), eps := {CLUSTER_EPS_M}, minpoints := {CLUSTER_MIN_POINTS})
            OVER (PARTITION BY ({open_sql('i')}))
@@ -185,10 +187,16 @@ def _metres(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return math.hypot(dx, dy)
 
 
-async def map_data(db: AsyncSession) -> dict:
+async def map_data(db: AsyncSession, area: str | None = None, categories: set[str] | None = None) -> dict:
     """Everything the map dashboard draws: every incident with its coordinates, per-area totals, and the
-    DBSCAN clusters of open incidents. Read-only; coordinates are the incident's own point."""
+    DBSCAN clusters of open incidents. Read-only; coordinates are the incident's own point.
+    An officer's map is limited to their own area and department (`area`, `categories`); the admin map is not."""
     rows = (await db.execute(text(MAP_SQL))).all()
+    if area:
+        rows = [r for r in rows if r.area == area]
+    if categories is not None:
+        rows = [r for r in rows if r.category in categories]
+    storage = get_storage()
     incidents, by_cluster, by_area = [], {}, {}
     for r in rows:
         is_open = status_mod.is_open(r.status)
@@ -198,6 +206,7 @@ async def map_data(db: AsyncSession) -> dict:
             "id": r.id, "public_id": r.public_id, "title": title_of(r.problem_type, r.category, r.address_text), "category": r.category,
             "area": r.area, "severity": r.severity, "status": r.status, "priority_score": r.priority_score, "risk": r.risk, "response": response, "assigned": r.assigned, **due_fields(r.status, r.due_at),
             "affected_count": r.affected_count, "created_at": r.created_at, "lat": r.lat, "lng": r.lng, "cluster": cluster,
+            "thumb_url": storage.signed_url(r.thumb_key) if r.thumb_key else None,  # the problem's own photo, never category art
         }
         incidents.append(item)
         if cluster is not None:
@@ -372,6 +381,18 @@ async def create_report(db: AsyncSession, user_id: uuid.UUID, body: ReportIn) ->
         )
         if owned != len(media_ids):
             raise ApiError(422, "invalid_media", "One of the photos was not found. Please add it again.")
+    review_reasons: list[str] = []
+    if media_ids:
+        # A photo the image model is sure does not show this problem is refused (it would only fill the database);
+        # a weaker mismatch keeps the report but flags it for an officer to review.
+        seen = (await db.execute(text("SELECT ai_label, ai_conf FROM media WHERE id = ANY(CAST(:ids AS uuid[]))"), {"ids": [str(m) for m in media_ids]})).all()
+        verdicts = [pipeline.photo_conflict(m.ai_label, m.ai_conf, category.name) for m in seen]
+        if "wrong" in verdicts:
+            raise ApiError(422, "photo_mismatch", "A photo does not look like the problem you chose. Remove it and add a clear photo of the problem.")
+        if "doubtful" in verdicts:
+            review_reasons.append("The photo may not match the chosen problem.")
+    if body.ai and body.ai.disagreement:
+        review_reasons.append("The photo and the description point to different problems.")
 
     severity, flags = rules.assess(category.name, body.problem_type, body.description, [*body.flags, *flags_from_answers(body.answers)])
     citizen_sev = rules.citizen_severity_for(category.name, body.problem_type, body.description)
@@ -415,11 +436,13 @@ async def create_report(db: AsyncSession, user_id: uuid.UUID, body: ReportIn) ->
         merged = False
         ward_id = await resolve_ward(db, body.lat, body.lng)
         row = (await db.execute(text("""
-            INSERT INTO incidents (public_id, category_id, location, ward_id, address_text, severity, citizen_severity, flags)
+            INSERT INTO incidents (public_id, category_id, location, ward_id, address_text, severity, citizen_severity, flags, needs_review, review_reason)
             VALUES ('IR-' || to_char(now() AT TIME ZONE 'Asia/Kolkata', 'YYYYMMDD') || '-' || lpad(nextval('incident_public_seq')::text, 5, '0'),
-                    :c, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, :w, :addr, CAST(:sev AS severity_level), CAST(:csev AS severity_level), CAST(:flags AS text[]))
+                    :c, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, :w, :addr, CAST(:sev AS severity_level), CAST(:csev AS severity_level), CAST(:flags AS text[]),
+                    :nr, :rr)
             RETURNING id, public_id, affected_count, status::text AS status, severity::text AS severity"""), {
             **point, "c": category.id, "w": ward_id, "addr": body.address_text, "sev": severity, "csev": citizen_sev, "flags": flags,
+            "nr": bool(review_reasons), "rr": " ".join(review_reasons) or None,
         })).first()
         incident_id, public_id = row.id, row.public_id
         await db.execute(text("INSERT INTO status_events (incident_id, from_status, to_status, actor_id) VALUES (:i, NULL, 'Reported', :u)"), {"i": incident_id, "u": user_id})

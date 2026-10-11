@@ -43,7 +43,7 @@ async def test_under_review_is_gone_and_the_new_statuses_exist(client):
     assert (await update(client, officer, iid, status="Scheduled", scheduled_for="2026-10-20")).json()["status"] == "Scheduled"
     assert (await update(client, officer, iid, status="In Progress")).json()["status"] == "In Progress"
     events = await fetch("SELECT from_status::text, to_status::text, actor_id IS NOT NULL AS has_actor FROM status_events WHERE incident_id = :i ORDER BY id", i=iid)
-    assert [(e.from_status, e.to_status) for e in events] == [(None, "Reported"), ("Reported", "Acknowledged"), ("Acknowledged", "Scheduled"), ("Scheduled", "In Progress")]
+    assert [(e.from_status, e.to_status) for e in events] == [(None, "Reported"), ("Reported", "Reported"), ("Reported", "Acknowledged"), ("Acknowledged", "Scheduled"), ("Scheduled", "In Progress")]  # the first officer action also records "took ownership"
     assert all(e.has_actor for e in events)
 
 
@@ -61,19 +61,19 @@ async def test_scheduled_needs_a_date_and_invalid_moves_are_refused(client):
     assert (await update(client, officer, iid, status="In Progress")).json()["status"] == "In Progress"
 
 
-# ---------- Resolved is one click ----------
+# ---------- Resolved needs a note, one complaint at a time ----------
 
 
-async def test_resolved_is_one_click_and_bulk_can_resolve(client):
+async def test_resolved_needs_a_note_and_bulk_cannot_resolve(client):
     officer = await make_authority(client)
     _, iid, _ = await new_complaint(client)
-    r = await update(client, officer, iid, status="Resolved", message="Work completed.")
+    r = await update(client, officer, iid, status="Resolved")
+    assert r.status_code == 422 and r.json()["error"]["code"] == "reason_required"
+    r = await update(client, officer, iid, status="Resolved", reason="Pothole filled and levelled.")
     assert r.status_code == 200 and r.json()["status"] == "Resolved"
     ids = [(await new_complaint(client, north(300 + k * 150)))[1] for k in range(2)]
-    r = (await client.post("/authority/incidents/bulk", json={"ids": ids, "status": "Resolved"}, headers=officer["headers"])).json()
-    assert r["updated"] == 2 and r["skipped"] == []
-    events = await fetch("SELECT count(*) FROM status_events WHERE to_status = 'Resolved' AND actor_id IS NOT NULL")
-    assert events[0][0] == 3
+    r = await client.post("/authority/incidents/bulk", json={"ids": ids, "status": "Resolved"}, headers=officer["headers"])
+    assert r.status_code == 422
 
 
 async def test_bulk_cannot_resolve_but_can_acknowledge_assign_schedule_and_message(client):
@@ -281,13 +281,13 @@ async def test_chip_counts_equal_the_list_totals_for_the_same_filter(client):
     async with engine.begin() as conn:
         await conn.execute(text("UPDATE incidents SET due_at = now() - interval '2 days' WHERE id = :i"), {"i": ids[0]})  # overdue
 
-    views = ["all", "new", "acknowledged", "scheduled", "in_progress", "resolved", "closed", "overdue", "unassigned"]
+    views = ["all", "mine", "review", "new", "acknowledged", "scheduled", "in_progress", "resolved", "closed", "overdue", "unassigned"]
     for extra in ({}, {"category": "Pothole"}, {"ward": "Andheri West"}, {"q": "link"}, {"category": "Garbage", "ward": "Andheri West"}):
         chips = (await client.get("/authority/stats", params=extra, headers=officer["headers"])).json()["chips"]
         for v in views:
             total = (await client.get("/authority/incidents", params={**extra, "view": v}, headers=officer["headers"])).json()["total"]
             assert chips[v] == total, (extra, v, chips[v], total)
     chips = (await client.get("/authority/stats", headers=officer["headers"])).json()["chips"]
-    assert chips == {"all": 7, "new": 2, "acknowledged": 1, "scheduled": 1, "in_progress": 1, "resolved": 1, "closed": 1, "overdue": 1, "unassigned": 4}
+    assert chips == {"all": 7, "new": 2, "acknowledged": 1, "scheduled": 1, "in_progress": 1, "resolved": 1, "closed": 1, "overdue": 1, "unassigned": 2, "mine": 5, "review": 0}
     stats = (await client.get("/authority/stats", headers=officer["headers"])).json()
-    assert stats["overdue"] == 1 and stats["unassigned"] == 4 and sum(stats["by_status"].values()) == 7
+    assert stats["overdue"] == 1 and stats["unassigned"] == 2 and sum(stats["by_status"].values()) == 7

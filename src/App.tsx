@@ -9,6 +9,7 @@ import { menuText, severityName, statusName, tr, trf, type StrKey } from "./i18n
 import { FAQS, HOW_STEPS, HOW_TIPS, HOW_UI } from "./i18nStaff";
 import AuthPage from "./AuthPage";
 import AuthorityDashboard from "./AuthorityDashboard";
+import StaffGuide from "./StaffGuide";
 import AdminPanel from "./AdminPanel";
 
 /** If the control room crashes (for example the API is an older version than this frontend), show why instead of a blank page. */
@@ -25,7 +26,7 @@ class StaffBoundary extends Component<{ lang: Lang; children: ReactNode }, { fai
 const ReportFlow = lazy(() => import("./ReportFlow"));
 
 type Lang = "en" | "hi" | "mr";
-type Page = "home" | "community" | "reports" | "profile" | "auth" | "authority" | "admin";
+type Page = "home" | "community" | "reports" | "profile" | "auth" | "authority" | "admin" | "how";
 type User = ApiUser;
 
 const media = (file: string) => `${import.meta.env.BASE_URL}media/${file}`;
@@ -94,7 +95,7 @@ function Header({ page, go, goSection, open, lang, setLang, user, logout }: { pa
   const staff = user !== null && user.role !== "citizen";
   const nav: [Page, string][] = !staff
     ? [["home", t.nav[0]], ["community", t.nav[1]], ["reports", t.nav[2]], ["profile", t.nav[3]]]
-    : user!.role === "authority" ? [["home", "Home"], ["authority", "Control room"]] : [["home", "Home"], ["admin", "Admin"]];
+    : user!.role === "authority" ? [["home", "Home"], ["authority", "Control room"], ["how", "How it works"]] : [["home", "Home"], ["admin", "Admin"], ["how", "How it works"]];
   const initials = user ? user.name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase() : "";
   return <header className="topbar"><div className="nav-shell">
     <button className="brand-button" onClick={() => go("home")} aria-label="iREPORT home"><Brand /></button>
@@ -347,7 +348,7 @@ function Profile({ lang, setLang, go, goFaq, user, logout }: { lang: Lang; setLa
 function MobileNav({ page, go, open, lang, user, logout }: { page: Page; go: (p: Page) => void; open: (category?: string) => void; lang: Lang; user: User | null; logout: () => void }) {
   if (user && user.role !== "citizen") {
     const dash: Page = user.role === "admin" ? "admin" : "authority";
-    return <nav className="mobile-nav staff"><button className={page === "home" ? "active" : ""} onClick={() => go("home")}><Icon name="home" /><span>Home</span></button><button className={page === dash ? "active" : ""} onClick={() => go(dash)}><Icon name="reports" /><span>{user.role === "admin" ? "Admin" : "Control room"}</span></button><button onClick={logout}><Icon name="logout" /><span>Log out</span></button></nav>;
+    return <nav className="mobile-nav staff"><button className={page === "home" ? "active" : ""} onClick={() => go("home")}><Icon name="home" /><span>Home</span></button><button className={page === dash ? "active" : ""} onClick={() => go(dash)}><Icon name="reports" /><span>{user.role === "admin" ? "Admin" : "Control room"}</span></button><button className={page === "how" ? "active" : ""} onClick={() => go("how")}><Icon name="help" /><span>How it works</span></button><button onClick={logout}><Icon name="logout" /><span>Log out</span></button></nav>;
   }
   const pages: [Page, IconName, string][] = [["home", "home", copy[lang].nav[0]], ["community", "community", copy[lang].nav[1]], ["reports", "reports", copy[lang].nav[2]], ["profile", "profile", copy[lang].nav[3]]];
   return <nav className="mobile-nav">{pages.slice(0, 2).map(([p, icon, label]) => <button className={page === p ? "active" : ""} key={p} onClick={() => go(p)}><Icon name={icon} /><span>{label}</span></button>)}<button className="mobile-report" onClick={() => open()}><i><Icon name="plus" /></i><b>Report</b></button>{pages.slice(2).map(([p, icon, label]) => <button className={page === p ? "active" : ""} key={p} onClick={() => go(p)}><Icon name={icon} /><span>{label}</span></button>)}</nav>;
@@ -387,7 +388,7 @@ export default function App() {
     setAfterLogin(false);
   };
   const logout = () => { api.logout(); endSession(); go("home"); };
-  const view: Page = !booting && ((page === "authority" && user?.role !== "authority") || (page === "admin" && user?.role !== "admin")) ? "auth" : page;
+  const view: Page = !booting && ((page === "authority" && user?.role !== "authority") || (page === "admin" && user?.role !== "admin") || (page === "how" && (!user || user.role === "citizen"))) ? "auth" : page;
   const area = user?.area ?? AREAS[0]; // home area: only the starting point of the Community feed, never a report location
   return <div><Header page={view} go={go} goSection={goSection} open={openReport} lang={lang} setLang={setLang} user={user} logout={logout} />
     {view === "home" && <Home open={openReport} go={go} lang={lang} />}
@@ -395,8 +396,9 @@ export default function App() {
     {view === "reports" && <Reports lang={lang} user={user} open={openReport} go={go} />}
     {view === "profile" && <Profile lang={lang} setLang={setLang} go={go} goFaq={goFaq} user={user} logout={logout} />}
     {view === "auth" && <AuthPage onLogin={handleLogin} bmcImage={`${import.meta.env.BASE_URL}media/bmc-headquarters.jpg`} />}
-    {view === "authority" && user && <StaffBoundary lang={lang}><AuthorityDashboard user={user} lang={lang} /></StaffBoundary>}
+    {view === "authority" && user && <StaffBoundary lang={lang}><AuthorityDashboard key={user.id} user={user} lang={lang} onSwitch={handleLogin} /></StaffBoundary>}
     {view === "admin" && user && <AdminPanel lang={lang} />}
+    {view === "how" && user && user.role !== "citizen" && <StaffGuide lang={lang} role={user.role === "admin" ? "admin" : "authority"} />}
     <MobileNav page={view} go={go} open={openReport} lang={lang} user={user} logout={logout} />
     {flow !== "none" && user && <Suspense fallback={<div className="modal-backdrop"><div className="report-modal loading-modal" role="status">Loading…</div></div>}><ReportFlow key={flowKey} open={flow === "open"} initialCategory={flowCategory} lang={lang} close={() => setFlow("hidden")} discard={() => { setFlow("none"); }} done={() => { setFlow("none"); qc.invalidateQueries({ queryKey: ["reports"] }); qc.invalidateQueries({ queryKey: ["contribution"] }); qc.invalidateQueries({ queryKey: ["community"] }); go("reports"); }} /></Suspense>}
     <footer><div className="section"><Brand /><p>See it → Select it → Capture it → Locate it → Confirm it → Report it → Track it.</p><small>Independent civic platform for Metropolitan Mumbai · Not an official BMC website</small></div></footer></div>;

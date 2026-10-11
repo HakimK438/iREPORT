@@ -2,6 +2,7 @@ import logging
 import time
 
 from fastapi import APIRouter, File, Form, UploadFile
+from sqlalchemy import update
 from starlette.concurrency import run_in_threadpool
 
 from .. import images, ratelimit
@@ -79,6 +80,9 @@ async def analyze(
     for chk in result.get("photo_checks", []):
         chk["media_id"] = media_ids[chk["index"]]
         chk["thumb_url"] = thumbs[chk["index"]]
+        # Remember what the model saw, so create_report can refuse a wrong photo and flag a doubtful one.
+        await db.execute(update(Media).where(Media.id == chk["media_id"]).values(ai_label=chk["looks_like"], ai_conf=chk["confidence"]))
+    await db.commit()
     gps = next((p.gps for p in processed if p.gps), None)
     result.update(
         department=ref.departments.get(cat.department_id) if cat else None,

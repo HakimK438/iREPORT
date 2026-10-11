@@ -199,7 +199,7 @@ async def test_authority_list_sort_filter_page_and_stats(client):
 
     detail = (await client.get(f"/authority/incidents/{danger['incident_id']}", headers=officer["headers"])).json()
     assert detail["reasons"][0]["code"] == "impact_4" and detail["reasons"][0]["source"] == "category" and len(detail["evidence"]) == 2
-    assert [h["status"] for h in detail["timeline"]] == ["Reported", "Resolved"]
+    assert [h["status"] for h in detail["timeline"]] == ["Reported", "Reported", "Resolved"]  # the middle one is the internal "took ownership" note
 
 
 async def test_bulk_update_one_transaction(client):
@@ -218,11 +218,11 @@ async def test_bulk_update_one_transaction(client):
     await client.post("/authority/incidents/bulk", json={"ids": ids, "status": "Acknowledged"}, headers=officer["headers"])
     async with engine.connect() as conn:
         assert await conn.scalar(text("SELECT count(*) FROM status_events WHERE to_status = 'Acknowledged'")) == 3
-    # bulk can resolve (one click, README.md (Design decisions) #79)
-    assert (await client.post("/authority/incidents/bulk", json={"ids": ids, "status": "Resolved"}, headers=officer["headers"])).json()["updated"] == 3
+    # bulk cannot resolve: a fix needs its own note
+    assert (await client.post("/authority/incidents/bulk", json={"ids": ids, "status": "Resolved"}, headers=officer["headers"])).status_code == 422
     assert (await client.post("/authority/incidents/bulk", json={"ids": ids}, headers=officer["headers"])).status_code == 422
-    assert (await client.post("/authority/incidents/bulk", json={"ids": ids, "status": "Resolved"}, headers=c["headers"])).status_code == 403
-    assert (await client.post("/authority/incidents/bulk", json={"ids": ["00000000-0000-4000-8000-000000000000"] * 101, "status": "Resolved"}, headers=officer["headers"])).status_code == 422
+    assert (await client.post("/authority/incidents/bulk", json={"ids": ids, "status": "Acknowledged"}, headers=c["headers"])).status_code == 403
+    assert (await client.post("/authority/incidents/bulk", json={"ids": ["00000000-0000-4000-8000-000000000000"] * 101, "status": "Acknowledged"}, headers=officer["headers"])).status_code == 422
 
 
 async def test_citizen_sees_only_own_reports(client):

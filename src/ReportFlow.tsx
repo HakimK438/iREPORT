@@ -356,8 +356,8 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
           <small>{tr(lang, "mmChosen")}: {catName(lang, effective)} · {tr(lang, "mmNotAttached")}</small>
           <span className="mm-actions">
             {looks && <button className="secondary compact" onClick={() => setFinalCategory(looks)}>{tr(lang, "mmSwitch")} {catName(lang, looks)}</button>}
-            <button className="secondary compact" onClick={() => setKeepPhotos(k => [...k, c.media_id])}>{tr(lang, "mmKeep")}</button>
-            {shot && <button className="text-button" onClick={() => removeShot(shot.key)}>{tr(lang, "remove")}</button>}
+            {/* A wrong photo is never sent: remove it and pick another. */}
+            <button className="primary compact" onClick={() => { if (shot) removeShot(shot.key); uploadRef.current?.click(); }}>{tr(lang, "mmReplace")}</button>
           </span></div></div>; })}
     <button className="text-button" onClick={() => setMmPicking(p => !p)}>{tr(lang, "chooseOwn")}</button>
     {mmPicking && categoryButtons([effective], name => { setFinalCategory(name); setMmPicking(false); })}

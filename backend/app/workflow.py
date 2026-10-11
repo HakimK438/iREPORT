@@ -2,7 +2,7 @@
 mirrors it. Every status change writes a status_events row with the actor and a reason.
 
 Rules (README.md (Design decisions), "Workflow"):
-- Resolved is one click (owner decision, README.md (Design decisions) #79); the citizen then confirms or reopens.
+- Resolved needs a completion note, one complaint at a time (no bulk); the citizen then confirms or reopens.
 - Rejected and On Hold need a reason. Duplicate needs the complaint no. it duplicates; the reporters move to it.
 - Transferred needs the correct category (the department follows the category) and a reason.
 - Closed and Reopened belong to the citizen (or to the 72 h auto-close job), never to an officer.
@@ -23,6 +23,8 @@ from .refdata import ref
 from .schemas import AuthorityUpdate, BulkUpdate
 from .status import LOCKED_STATUSES
 
+# The officer who starts working a complaint owns it: a complaint is never In progress (or resolved) with nobody responsible.
+OWNING = {"Acknowledged", "Scheduled", "In Progress", "Resolved"}
 _SIDE_EXITS = {"On Hold", "Rejected", "Duplicate", "Transferred"}
 ALLOWED: dict[str, set[str]] = {
     "Reported": {"Acknowledged", "Scheduled", "In Progress", "Resolved"} | _SIDE_EXITS,
@@ -33,7 +35,7 @@ ALLOWED: dict[str, set[str]] = {
     "On Hold": {"Acknowledged", "Scheduled", "In Progress", "Resolved", "Rejected", "Duplicate", "Transferred"},
     "Resolved": {"In Progress"},  # rework after a premature "Resolved"
 }
-NEEDS_REASON = {"On Hold": "Say why the complaint is on hold.", "Rejected": "Say why the complaint is rejected.", "Transferred": "Say why it is transferred."}
+NEEDS_REASON = {"Resolved": "Write a short note on what was done before marking it resolved.", "On Hold": "Say why the complaint is on hold.", "Rejected": "Say why the complaint is rejected.", "Transferred": "Say why it is transferred."}
 
 
 async def _approved_officer(db: AsyncSession, user_id: uuid.UUID) -> str:
@@ -94,6 +96,8 @@ async def apply_officer_update(db: AsyncSession, officer: uuid.UUID, incident_id
             raise ApiError(409, "invalid_transition", f"A complaint that is {cur} cannot be moved to {new}.")
         if new in NEEDS_REASON and not body.reason:
             raise ApiError(422, "reason_required", NEEDS_REASON[new])
+        if new == "Resolved" and len(body.reason.strip()) < 5:
+            raise ApiError(422, "reason_required", NEEDS_REASON["Resolved"])
         if new == "Scheduled" and not (body.scheduled_for or row.scheduled_for):
             raise ApiError(422, "date_required", "Choose the site visit or work date.")
         if new == "Duplicate" and not body.duplicate_of:
@@ -105,8 +109,12 @@ async def apply_officer_update(db: AsyncSession, officer: uuid.UUID, incident_id
             if target_category.id == row.category_id:
                 raise ApiError(422, "same_category", "That is already the category of this complaint.")
     officer_name = await _approved_officer(db, body.assigned_to) if body.assigned_to else None
+    takes_over = bool(new and new != cur and new in OWNING and row.assigned_to is None and not body.assigned_to)
 
     # ---- write ----
+    if takes_over:
+        await db.execute(text("UPDATE incidents SET assigned_to = :a, updated_at = now() WHERE id = :i"), {"a": officer, "i": incident_id})
+        await _event(db, incident_id, cur, cur, officer, f"Assigned to {await _approved_officer(db, officer)} (took ownership)")
     if body.assigned_to and body.assigned_to != row.assigned_to:
         await db.execute(text("UPDATE incidents SET assigned_to = :a, updated_at = now() WHERE id = :i"), {"a": body.assigned_to, "i": incident_id})
         await _event(db, incident_id, cur, cur, officer, f"Assigned to {officer_name}")

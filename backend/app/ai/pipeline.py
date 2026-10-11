@@ -19,6 +19,7 @@ NOT_CIVIC = "not_civic"
 IMAGE_WEIGHT, TEXT_WEIGHT = 0.7, 0.3
 DISAGREE_AT = 0.60  # both models at least this sure of different categories
 MISMATCH_AT = 0.60  # a single photo is flagged only when the image model is at least this sure it shows something else
+DOUBT_AT = 0.40     # a weaker mismatch than MISMATCH_AT: the report is kept but flagged "needs review"
 MERGED = {"Road Damage": "Pothole", "Drainage": "Water Leakage"}  # legacy names count as their merged category
 
 
@@ -101,6 +102,19 @@ def photo_check(index: int, probs: dict[str, float], chosen: str | None) -> dict
     norm = lambda c: MERGED.get(c, c)  # noqa: E731
     mismatch = bool(chosen and chosen != "Other" and conf >= MISMATCH_AT and top != "Other" and norm(top) != norm(chosen))
     return {"index": index, "looks_like": norm(top), "confidence": round(conf, 4), "matches": not mismatch}
+
+
+def photo_conflict(label: str | None, conf: float | None, chosen: str) -> str | None:
+    """Judges a stored photo against the FINAL category at submit time. "wrong" = the model is sure it shows something else
+    (or no civic problem at all): the photo is refused. "doubtful" = a weaker mismatch: the report is kept but flagged
+    for review. None = fine, or the model had no opinion."""
+    if not label or conf is None:
+        return None
+    if label == NOT_CIVIC:
+        return "wrong" if conf >= MISMATCH_AT else "doubtful" if conf >= DOUBT_AT else None
+    if chosen == "Other" or label == "Other" or MERGED.get(label, label) == MERGED.get(chosen, chosen):
+        return None
+    return "wrong" if conf >= MISMATCH_AT else "doubtful" if conf >= DOUBT_AT else None
 
 
 def analyze(images: list[Image.Image], text: str | None, problem_type: str | None, chosen_category: str | None, uncertain_below: float) -> dict:

@@ -263,10 +263,15 @@ class AuthorityUpdate(Strict):
 class BulkUpdate(Strict):
     """Bulk actions: acknowledge, assign, schedule, resolve and message."""
     ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
-    status: Literal["Acknowledged", "Scheduled", "Resolved"] | None = None
+    status: Literal["Acknowledged", "Scheduled"] | None = None  # Resolved is one complaint at a time, with a note
     message: str | None = Field(default=None, max_length=1000)
     assigned_to: uuid.UUID | None = None
     scheduled_for: date | None = None
+
+
+class ReviewDecision(Strict):
+    decision: Literal["genuine", "fake"]
+    note: str | None = Field(default=None, max_length=300)
 
 
 class CitizenReopen(Strict):

@@ -152,6 +152,8 @@ class Media(Base):
     width: Mapped[int | None] = mapped_column(SmallInteger)
     height: Mapped[int | None] = mapped_column(SmallInteger)
     bytes: Mapped[int | None] = mapped_column(Integer)
+    ai_label: Mapped[str | None] = mapped_column(Text)   # what the image model saw (see ai/pipeline.photo_conflict)
+    ai_conf: Mapped[float | None] = mapped_column(Float)
     incident_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("incidents.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

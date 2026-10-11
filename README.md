@@ -37,7 +37,7 @@ Languages: English, Hindi and Marathi (the Hindi and Marathi text is machine-wri
 | Guided report flow | Pick the problem, answer a few quick questions (typed or spoken), add up to 3 photos, pin the exact spot (device GPS, photo GPS or tap on the map), review, submit. |
 | One report per spot | If you already reported the same spot within 50 m (any category) the server refuses a repeat and offers to **add a photo** to your report instead. |
 | Confirm instead of duplicating | If someone else already reported a problem within 50 m, you can **confirm** it. The affected count goes up without a second report. |
-| Photo and text assistance | Two small CPU models suggest a category from the photo and the description. The suggestion is **marked as unverified** and the citizen's choice always wins. Photos that clearly show something else are left out unless the citizen keeps them. |
+| Photo and text assistance | Two small CPU models suggest a category from the photo and the description. The suggestion is **marked as unverified** and the citizen's choice always wins. A photo the image model is sure shows something else (or no civic problem) is **refused**: the citizen sees "Remove photo and upload another", and the server also rejects it on submit (`photo_mismatch`), so wrong images never fill the database. A weaker mismatch keeps the report but flags it for review. |
 | My Reports | A six-step timeline (Reported, Seen, Scheduled, Work started, Fixed, Closed), side states (On hold, Not accepted, Merged, Sent to the right department), and messages from the ward office. |
 | Confirm or reopen | When a complaint is marked fixed the reporter confirms it (it closes) or reopens it with a reason. With no answer in 72 hours it closes automatically. |
 | Community feed | Nearby open problems, sortable, with a one-tap confirm. |
@@ -48,19 +48,36 @@ Languages: English, Hindi and Marathi (the Hindi and Marathi text is machine-wri
 
 | Feature | What it does |
 |---|---|
-| Count chips | All, New, Acknowledged, Scheduled, In progress, Resolved (awaiting citizen), Closed, Overdue, Unassigned. Each number equals the list total for the same filters. |
+| Area authority tabs | One tab per area authority ("Dadar Authority"). Your own area is highlighted. Another area needs that authority's own sign-in (in development the demo login is pre-filled). |
+| Count chips | All, New, Acknowledged, Scheduled, In progress, Awaiting verification, Closed, Overdue, Unassigned. Each number equals the list total for the same filters. A second row filters by priority: All priorities, Critical, High risk, Moderate risk, Routine. |
 | Hazard categories | CRITICAL, HIGH RISK, MODERATE RISK, ROUTINE, each with a symbol, a colour, a one-line reason and a recommended action. The internal score is never shown as the decision. |
-| Complaint list | Photo, what and where, hazard chip, due date or "Overdue", status, assignee. Filters: ward, category, hazard category, search, sort. |
+| Complaint list | The complaint's own photo (or a plain "No photo" box, never category art), what and where, hazard chip, due date or "Overdue", status, assignee. Search, area, category and sort filters. |
 | Incident brief | One complaint read top to bottom like a work order: what, why it is urgent (at most 3 reasons, each with its source), where (area picture, small map, Navigate, Copy location), evidence per reporter, history at this spot, nearby open work, timeline, messages. |
-| One next action | A single primary button that matches the status (Acknowledge, Assign, Schedule, Start work, Mark resolved). Everything else is under **More**: hold, reject, mark duplicate, transfer to another category, reassign. |
-| Bulk actions | Acknowledge, resolve, assign, schedule or message many complaints at once. Skipped items are reported. |
-| Map | Open complaints coloured by hazard category, problem clusters, area cards with location pictures, area name labels. |
+| Why this deadline | Each complaint explains its deadline: when it was reported, how long that priority allows (24 hours, 3 days, 14 days or 30 days), the deadline, how late it is, the officer's first action (or "nobody has acknowledged it yet") and who owns it. |
+| One next action | A single primary button that matches the status (Acknowledge, Assign, Schedule, Start work, Mark resolved). Everything else is under **More**: hold, reject, mark duplicate, transfer to another category, reassign. **Mark resolved** opens a box for a completion note (required, shown to the citizen). |
+| Potentially fake / needs review | A report whose photo only weakly matches, or whose photo and description disagree, is flagged. The officer opens it and chooses "It is genuine" or "Reject as fake". |
+| Bulk actions | Acknowledge, assign, schedule or message many complaints at once. **Resolving is never bulk.** Skipped items (including ones outside the officer's area or department) are reported. |
+| Map | Open complaints in the officer's own area, coloured by hazard category, problem clusters, area cards, cards showing each problem's own photo. |
 | Print work order | An A4 sheet per complaint: hazard box, details, reasons, reporters and photos, history, nearby work, timeline, blank fields for work done, material, crew, and signature lines. |
-| Analysis tab | Today card, overview KPIs, 12-week backlog chart, area-wise bars (overdue vs open), hazard mix donut, on-time performance by department and ward, repeat spots (poor repair quality), season chart, a map with Critical / Overdue / Unassigned / All open layers, CSV export, and a printable report with an area-wise summary. Every chart title is a sentence computed from the data and every chart has a text summary and a data table. |
+| Analysis tab | A "What this means for you" block first (busiest area, most common problem with a suggested action, overdue count, on-time share, backlog trend, open complaints by priority), then today card, overview KPIs, 12-week backlog chart, area-wise bars (overdue vs open), hazard mix donut, on-time performance by department and ward, repeat spots (poor repair quality), season chart, a map with Critical / Overdue / Unassigned / All open layers, CSV export, and a printable report with an area-wise summary. Every chart title is a sentence computed from the data and every chart has a text summary and a data table. |
 
 ### Administrators
 
-Approve, reject or revoke officer accounts, see per-department workload, hazard concentration and hotspots, and view the same map and read-only complaint view.
+The page opens with the map of every complaint in Mumbai, then a dashboard in which **every number is a count over the complaint, report and user tables** (nothing estimated or modelled), using the same rules as the officers' analysis:
+
+- Eight summary cards, each with its definition: open complaints, critical and high risk, overdue, not assigned, resolved share, fixed on time (with the typical fix time), new in 7 days against the week before, waiting for citizen confirmation. Plus citizen reports, citizens registered, officers approved, approvals pending, reports to review.
+- A 12-week line chart (reported, finished, still open), priority bars, a problem-type donut, area-wise stacked bars (overdue, open on schedule, resolved), a department table, ranked hotspots with impact bars, an officer workload table, and a collapsed "How these numbers are counted" box.
+- Approve, reject or revoke officer accounts, the read-only complaint view, and a printable city report.
+
+Endpoint: `GET /admin/performance`.
+
+### Who sees what
+
+- **Citizen:** reports problems, confirms or reopens a fix. Never assigns work.
+- **Area authority (officer):** sees and changes only complaints in their own **area (ward) and department**. The server enforces this on the list, the counts, the map, the detail, every update, bulk actions and assigning. Another area's complaint returns 403 `out_of_scope`. An officer can only assign to colleagues of the same department and area. An officer with no area covers the whole city, and the General / Ward Office department covers every category.
+- **Admin:** reads every complaint in Mumbai, approves officers, and sees the city dashboard.
+
+A **How it works** tab (after "Control room", for officers and admins, in English, Hindi and Marathi) shows the journey of a complaint, the four priority levels, screenshots of the main screens, what every button means, the statuses and the categories.
 
 ---
 
@@ -95,6 +112,8 @@ Side states: Reopened, On Hold, Rejected, Duplicate, Transferred
 
 - **Open** means Reported, Acknowledged, Scheduled, In Progress, Reopened or On Hold. This is defined once in `backend/app/status.py` and once as the SQL function `ireport_is_open()`; a test proves they agree.
 - Rules enforced on the server: On Hold and Rejected need a reason; Duplicate needs the original complaint number and moves its reporters across (the count is recomputed from distinct people); Transfer needs the correct category (the department follows it) and a reason and puts the complaint back in the new department's queue as Reported; Closed and Reopened belong to the citizen.
+- **Resolved needs a completion note** (at least 5 characters, shown to the citizen) and is always one complaint at a time: bulk resolve is refused.
+- **The officer who works a complaint owns it.** Acknowledging, scheduling, starting or resolving a complaint that has no owner assigns it to the acting officer (the timeline records "took ownership"), so a complaint is never In progress with nobody responsible.
 - Every transition is written to `status_events` with the actor and the reason.
 
 ---
@@ -125,9 +144,11 @@ PostgreSQL 16 + PostGIS      S3-compatible storage      ONNX Runtime (CPU)
 ## Repository map
 
 ```
-src/                  React app: App.tsx (citizen pages), AuthorityDashboard.tsx, IncidentDetail.tsx (the brief),
-                      AnalysisTab.tsx, MapDashboard.tsx, ProblemMap.tsx, ReportFlow.tsx, i18n.ts / i18nStaff.ts
+src/                  React app: App.tsx (citizen pages), AuthorityDashboard.tsx, AreaTabs.tsx, IncidentDetail.tsx (the brief),
+                      AnalysisTab.tsx, AdminPanel.tsx, AdminPerformance.tsx (admin dashboard), StaffGuide.tsx (How it works),
+                      MapDashboard.tsx, ProblemMap.tsx, ReportFlow.tsx, i18n.ts / i18nStaff.ts
 public/areas/         location pictures per area      public/symbols/   hazard category symbols
+public/guide/         screenshots and example photos used by the How it works page
 backend/app/          FastAPI app
   routers/            auth, me, reports, incidents, authority, analytics, admin, ai, health
   incidents.py        report creation, merge and duplicate rules, risk inputs, map data
@@ -135,16 +156,17 @@ backend/app/          FastAPI app
   priority.py         risk formula, response categories, reasons    risk_config.py   every tunable number
   status.py           the one definition of "open"                  brief.py         the complaint brief
   ai/                 text model, image model, rules (flags, severity, NLP)
-backend/alembic/      migrations 0001 to 0013
-backend/scripts/      seed_demo, seed_load, load_osm, load_wards, bench, table_sizes
-backend/tests/        pytest suite (124 tests)
+backend/alembic/      migrations 0001 to 0015
+backend/scripts/      seed_demo, seed_load, seed_area_problems, seed_extra_problems, load_osm, load_wards, bench, table_sizes
+backend/seed_data/     110 dataset photos (Pothole, Road Damage, Garbage, Electrical Hazard, Drainage, Other) used by the seed scripts
+backend/tests/        pytest suite (131 tests)
 ml/                   offline training and evaluation of the two models
 docs/                 AI_AND_GIS.md, I18N_REVIEW.md, screenshots/
 DECISIONS.md          every choice the brief left open, numbered
 REVIEW_AUTHORITY_V2.md  review notes and manual test script for the authority v2 work
 ```
 
-Migrations, in order: 0001 schema, 0002 seed (departments, categories, areas), 0003 list indexes, 0004 report evidence, 0005 report answers, 0006 more areas, 0007 Mumbai region areas, 0008 area fix, 0009 duplicate reports, 0010 status values, 0011 workflow, 0012 map features, 0013 risk priority.
+Migrations, in order: 0001 schema, 0002 seed (departments, categories, areas), 0003 list indexes, 0004 report evidence, 0005 report answers, 0006 more areas, 0007 Mumbai region areas, 0008 area fix, 0009 duplicate reports, 0010 status values, 0011 workflow, 0012 map features, 0013 risk priority, 0014 photo checks and the needs-review flag, 0015 owner backfill (every worked complaint has an owner).
 
 ---
 
@@ -161,6 +183,7 @@ docker compose up --build         # postgres+postgis (host port 5434), minio (90
 - Health: `GET /api/v1/health` (process up) and `GET /api/v1/ready` (database and models).
 - Migrations run when the API container starts. The first admin comes from `ADMIN_EMAIL` and `ADMIN_PASSWORD`.
 - Demo citizen, officer and complaints for development: `docker compose exec api python -m scripts.seed_demo` (refuses to run when `ENV=production`).
+- More demo data, with relevant photos from the CivicFix dataset: `python -m scripts.seed_area_problems` (10 complaints in each of 16 Mumbai areas and one ward officer per area), then `python -m scripts.seed_extra_problems` (6 more per area using the additional photos). Both skip areas that are already seeded. The dataset photos are in `backend/seed_data/images/`; no model is trained.
 
 Frontend:
 
@@ -171,7 +194,7 @@ $env:PORT=5173; npx pnpm@10 dev    # PowerShell; reads VITE_API_URL (default htt
 
 Open http://localhost:5173. Add the frontend's origin to `CORS_ORIGINS`. If the frontend and API are on different sites in production, set `COOKIE_SAMESITE=none` and `COOKIE_SECURE=true`.
 
-Demo accounts (development only): citizen `aarav@example.com` / `citizen123`, officer `officer@bmc.demo` / `bmc12345`. The admin account uses `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env`.
+Demo accounts (development only): citizen `aarav@example.com` / `citizen123`, officer `officer@bmc.demo` / `bmc12345`, area authorities `ward.<area>@bmc.demo` / `ward12345` (for example `ward.dadar@bmc.demo`). The admin account uses `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env`.
 
 Optional, run once by a developer: `python -m scripts.load_osm` downloads schools, hospitals and main roads from OpenStreetMap so "near a school" and "on a main road" are checked by PostGIS instead of taken from what the citizen ticked. If the download fails nothing is invented; the citizen's flags are used and labelled "citizen says".
 
@@ -185,7 +208,7 @@ More detail: [HOW_TO_RUN.md](#windows-run-guide) (Windows).
 docker compose --profile test run --rm tests        # in the Python 3.12 image (uses the ireport_test database)
 ```
 
-**124 backend tests** pass, plus 2 ML tests. They cover:
+**131 backend tests** pass, plus 2 ML tests. They cover:
 
 - authentication, refresh-token rotation and reuse detection, rate limits, role checks, authority approval
 - one report per spot (409 at 49 m versus 51 m, any category), the merge rule, the hourly report limit, add-photo, the nearby check, and the migration that flags old repeat reports
@@ -193,6 +216,10 @@ docker compose --profile test run --rm tests        # in the Python 3.12 image (
 - the risk formula: Python equals SQL on 1,024 combinations, map facts versus citizen claims, due dates that only move earlier, overdue
 - chip counts equal the list totals under ward, category and search filters
 - analytics: median days to close, within-due-date share, repeat spots, backlog, today card, CSV export that neutralises spreadsheet formulas
+- area and department access: an officer sees, counts, maps and changes only their own scope, bulk skips what is outside it, and assigning is limited to colleagues in scope
+- the photo check at submit (a wrong photo is refused, a doubtful one is flagged) and the review decisions
+- resolving needs a note, bulk resolve is refused, and an officer who works a complaint owns it
+- the admin dashboard totals equal the table counts
 - the image pipeline, the AI endpoints, retention jobs
 
 Frontend: `npx tsc --noEmit` (one old error remains in `src/imports/vite.config.ts`, a missing `.figma` file) and `npx vite build`.
@@ -210,9 +237,9 @@ All routes are under `/api/v1`, JSON, errors as `{"error": {"code", "message"}}`
 | Reports | `POST /reports`, `GET /reports/mine`, `GET /reports/nearby-check`, `POST /reports/{incident_id}/photos` |
 | Citizen | `GET /incidents/nearby`, `GET /incidents/{id}`, `POST/DELETE /incidents/{id}/confirm`, `POST /incidents/{id}/messages`, `POST /incidents/{id}/resolution/confirm`, `/resolution/reopen`, `GET /messages/unread-count`, `GET /geo/resolve` |
 | AI | `POST /ai/analyze` (photos, text, language, category hints; returns a suggestion marked as such) |
-| Officer | `GET /authority/incidents` (filters, sort, view chips, cursor paging), `GET /authority/stats`, `GET /authority/incidents/{id}` (the brief), `POST /authority/incidents/{id}/update`, `POST /authority/incidents/bulk`, `GET /authority/officers`, `GET /authority/map`, `GET /authority/hotspots` |
+| Officer | `GET /authority/incidents` (filters, sort, view chips, cursor paging), `GET /authority/stats`, `GET /authority/incidents/{id}` (the brief), `POST /authority/incidents/{id}/update`, `POST /authority/incidents/bulk`, `POST /authority/incidents/{id}/review`, `GET /authority/officers`, `GET /authority/areas`, `GET /authority/map`, `GET /authority/hotspots` |
 | Analytics | `GET /authority/analytics/overview`, `/backlog`, `/by-ward`, `/by-type`, `/performance`, `/season`, `/today`, `/export.csv` |
-| Admin | `GET /admin/authorities`, `POST /admin/authorities/{id}/decision`, `GET /admin/stats`, `/admin/overview`, `/admin/map`, `/admin/incidents/{id}` |
+| Admin | `GET /admin/authorities`, `POST /admin/authorities/{id}/decision`, `GET /admin/stats`, `/admin/overview`, `/admin/performance` (the dashboard), `/admin/map`, `/admin/incidents/{id}` |
 | Ops | `GET /health`, `GET /ready` |
 
 Rate limits: login, registration, photo analysis, 10 new reports per citizen per hour, 30 photo uploads per hour.
@@ -232,6 +259,10 @@ Rate limits: login, registration, photo analysis, 10 new reports per citizen per
 
 ## Known gaps
 
+- **The seeded complaints are demo data.** Their dates, statuses and fix times were set by the seed scripts, so figures such as "fixed on time" and "typical fix time" on the admin dashboard are not meaningful until real complaints are resolved. The dashboard counts honestly what is in the database.
+- The image model has no classes for electrical hazards and water leakage, so photos for those are accepted without a check. The CivicFix dataset has no streetlight photos, so none are seeded. Its pothole class is mostly wide road scenes, and its garbage class includes ocean waste; only clear street-level photos were used.
+- The Analysis tab's numbers are not limited to the officer's area (the complaint list, counts, map and detail are).
+- The new admin dashboard text is English only; the How it works page and the officer panel are translated.
 - The OpenStreetMap download for map checks failed during the last build, so "near a school" and "on a main road" currently use the citizen's flags.
 - Location pictures are the project's own files; there is no automated fetch script and no licence check on them. One symbol image carries a stock-site watermark.
 - Several officer actions (assign, schedule, hold, reject, duplicate, transfer, bulk, citizen confirm and reopen) are covered by API tests but were not clicked through in a browser.
@@ -475,11 +506,11 @@ Everything else is under **More**: reassign, hold, reject, mark duplicate, trans
 | On Hold, Rejected | A reason is required |
 | Duplicate | The original complaint number is required; its reporters, photos and confirmations move to it, repeat reporters are collapsed, and its count is recomputed from distinct people |
 | Transferred | The correct category and a reason are required; the department follows the category; the complaint returns to the new department's queue as Reported, unassigned, with its due date restarted |
-| Resolved | One click. The citizen then answers |
+| Resolved | A completion note is required (the citizen sees it). The citizen then answers |
 | Closed, Reopened | Set only by the citizen (or the 72-hour job); officers cannot set them |
 | Assign | Only to approved officers |
 
-**Bulk actions** (`POST /authority/incidents/bulk`, up to 100): acknowledge, resolve, assign, schedule, message. Complaints for which a move is not allowed are skipped and counted in the response.
+**Bulk actions** (`POST /authority/incidents/bulk`, up to 100): acknowledge, assign, schedule, message. Resolving in bulk is refused (422). Complaints outside the officer's area or department are skipped. Complaints for which a move is not allowed are skipped and counted in the response.
 
 #### Print work order
 
@@ -521,7 +552,7 @@ Road Damage and Drainage (older categories) are shown as Pothole and Water Leaka
 ### 10. Administrator
 
 - Approve, reject or revoke officer accounts; revoked sessions end immediately.
-- Overview: critical open complaints, per-department workload, hazard concentration by category, top hotspots.
+- Dashboard (`GET /admin/performance`): summary cards, weekly line chart, priority, problem-type and area charts, department table, ranked hotspots, officer workload. Every figure is a count; definitions are on the page.
 - The same map and a read-only complaint brief (no phone numbers).
 
 ### 11. Map facts and the AI
@@ -918,6 +949,13 @@ Where the build spec was unclear or could not be followed exactly, this is the s
 77. **Print work order** is CSS only (`@media print`, A4): the open brief alone, without buttons or the embedded map.
 78. **CSV export** neutralises cells starting with `=`, `+`, `-`, `@` (spreadsheet formula injection) and is limited to 10,000 rows.
 79. **ATR proof removed (owner decision after review).** "Mark resolved" is one click again, single or in bulk, as before v2; no after-photo, work note or device location is required. The citizen still confirms or reopens, and the 72 h auto-close stays. The `resolution_proofs` table and `media.incident_id` from migration 0011 are left in place unused (migrations are never edited); a later migration can drop them.
+80. **Resolved needs a completion note again (supersedes 79).** One complaint at a time, never in bulk; the note is shown to the citizen. No after-photo or device location is required.
+81. **Officers are limited to their own area and department, on the server.** `OfficerScope` filters the list, counts, map and hotspots and guards the detail, update, bulk, assign and review routes (403 `out_of_scope`). No area means the whole city; General / Ward Office covers every category. The area tabs switch area by signing in as that area's authority.
+82. **A wrong photo is refused, a doubtful one is flagged.** The image model's label and confidence are stored on the photo at analysis (`media.ai_label`, `ai_conf`). At submit, a confident mismatch (0.60 or more) is rejected with `photo_mismatch`; 0.40 to 0.60, or a photo and text that disagree, sets `incidents.needs_review` with a reason. Categories the model was not trained on are not checked.
+83. **The officer who works a complaint owns it.** Acknowledged, Scheduled, In progress or Resolved on an unassigned complaint assigns it to the acting officer; migration 0015 backfills existing rows from the status history.
+84. **Admin figures are plain counts.** `GET /admin/performance` uses the analytics definitions (open by status, overdue = open and past due_at, on time = resolved on or before due_at, median days to resolve). Nothing is estimated.
+85. **Seed data comes from the CivicFix dataset, without training.** Photos were chosen by quality (no black borders, sharp, diverse) and by eye; 110 are kept in `backend/seed_data/images/`.
+
 
 ---
 

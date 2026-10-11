@@ -90,8 +90,8 @@ async def register_citizen(client: httpx.AsyncClient, email: str | None = None, 
 
 
 async def resolve_complaint(client: httpx.AsyncClient, officer: dict, incident_id: str, **extra) -> httpx.Response:
-    """Marks a complaint Resolved: one click for the officer (README.md (Design decisions) #79)."""
-    return await client.post(f"/authority/incidents/{incident_id}/update", json={"status": "Resolved", **extra}, headers=officer["headers"])
+    """Marks a complaint Resolved. A completion note is required, so one is supplied unless the test passes its own."""
+    return await client.post(f"/authority/incidents/{incident_id}/update", json={"status": "Resolved", "reason": "Repair completed and site checked.", **extra}, headers=officer["headers"])
 
 
 async def admin_headers(client: httpx.AsyncClient) -> dict[str, str]:
@@ -100,9 +100,10 @@ async def admin_headers(client: httpx.AsyncClient) -> dict[str, str]:
     return auth(r.json()["access_token"])
 
 
-async def make_authority(client: httpx.AsyncClient, approve: bool = True, email: str | None = None) -> dict:
+async def make_authority(client: httpx.AsyncClient, approve: bool = True, email: str | None = None, area: str | None = None, department: str = "General / Ward Office") -> dict:
+    """An officer with no area covers the whole city; pass `area` / `department` to test area-wise access."""
     email = email or f"officer-{uuid.uuid4().hex[:8]}@bmc.example.com"
-    r = await client.post("/auth/register", json={"role": "authority", "name": "R. Kulkarni", "email": email, "password": "officer-pass-1", "area": "Fort", "department": "General / Ward Office", "employee_id": "BMC-10482", "consent": True})
+    r = await client.post("/auth/register", json={"role": "authority", "name": "R. Kulkarni", "email": email, "password": "officer-pass-1", "area": area, "department": department, "employee_id": "BMC-10482", "consent": True})
     assert r.status_code == 201, r.text
     result = {"email": email}
     if approve:
