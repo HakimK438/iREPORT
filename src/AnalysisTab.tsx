@@ -161,9 +161,9 @@ const ACTION: Record<string, string> = {
 };
 
 /** "What this means for you": the few findings an officer can act on today, in plain words, each with its number and a next step. */
-function Insights({ lang, o, w, t, b, prio }: { lang: Lang; o: AnOverview | undefined; w: AnWard | undefined; t: AnType | undefined; b: AnBacklog | undefined; prio: { critical: number; high: number; moderate: number; routine: number } | undefined }) {
+function Insights({ lang, o, w, t, b, prio, ownArea }: { lang: Lang; o: AnOverview | undefined; w: AnWard | undefined; t: AnType | undefined; b: AnBacklog | undefined; prio: { critical: number; high: number; moderate: number; routine: number } | undefined; ownArea?: string | null }) {
   const cards: { key: string; big: string; line: string; todo: string; tone?: string }[] = [];
-  const worst = w ? [...w.items].sort((a, c) => c.open - a.open || c.overdue - a.overdue)[0] : undefined;
+  const worst = w && !ownArea ? [...w.items].sort((a, c) => c.open - a.open || c.overdue - a.overdue)[0] : undefined;
   if (worst && worst.open > 0) cards.push({ key: "area", big: String(worst.open), line: `${worst.ward} has the most open complaints${worst.overdue ? `, ${worst.overdue} of them overdue` : ""}.`, todo: "Plan this area's crews first.", tone: worst.overdue ? "danger" : "" });
   const top = t ? [...t.items].sort((a, c) => c.open - a.open)[0] : undefined;
   const openAll = t ? t.items.reduce((a, i) => a + i.open, 0) : 0;
@@ -186,7 +186,7 @@ function Insights({ lang, o, w, t, b, prio }: { lang: Lang; o: AnOverview | unde
   </section>;
 }
 
-export default function AnalysisTab({ lang, ward, category, setWard, setCategory, openList }: { lang: Lang; ward: string; category: string; setWard: (w: string) => void; setCategory: (c: string) => void; openList: () => void }) {
+export default function AnalysisTab({ lang, ward, category, setWard, setCategory, openList, ownArea = null }: { lang: Lang; ward: string; category: string; setWard: (w: string) => void; setCategory: (c: string) => void; openList: () => void; ownArea?: string | null }) {
   const [from, setFrom] = useState(""), [to, setTo] = useState("");
   const [exporting, setExporting] = useState(false), [exportError, setExportError] = useState("");
   const f = { ward: ward || undefined, category: category || undefined, date_from: from || undefined, date_to: to || undefined };
@@ -215,7 +215,7 @@ export default function AnalysisTab({ lang, ward, category, setWard, setCategory
     <div className="an-filters" role="group" aria-label={tr(lang, "an_filters")}>
       <label>{tr(lang, "an_from")}<input type="date" value={from} max={to || undefined} onChange={e => setFrom(e.target.value)} /></label>
       <label>{tr(lang, "an_to")}<input type="date" value={to} min={from || undefined} onChange={e => setTo(e.target.value)} /></label>
-      <label>{tr(lang, "ad_allAreas")}<select value={ward} onChange={e => setWard(e.target.value)}><option value="">{tr(lang, "ad_allAreas")}</option>{AREAS.map(a => <option key={a}>{a}</option>)}</select></label>
+      {!ownArea && <label>{tr(lang, "ad_allAreas")}<select value={ward} onChange={e => setWard(e.target.value)}><option value="">{tr(lang, "ad_allAreas")}</option>{AREAS.map(a => <option key={a}>{a}</option>)}</select></label>}
       <label>{tr(lang, "s_category")}<select value={category} onChange={e => setCategory(e.target.value)}><option value="">{tr(lang, "m_allCats")}</option>{CATEGORY_NAMES.map(c => <option key={c} value={c}>{catLabel(lang, c)}</option>)}</select></label>
       {(ward || category || from || to) && <button className="text-button" onClick={() => { setWard(""); setCategory(""); setFrom(""); setTo(""); }}>{tr(lang, "s_clearFilters")}</button>}
       <span className="grow" />
@@ -226,7 +226,7 @@ export default function AnalysisTab({ lang, ward, category, setWard, setCategory
     {exportError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {exportError}</div>}
     {failed && <div className="empty-note error"><Icon name="alert" /><span><b>{tr(lang, "s_loadFail")}</b><small>{(failed.error as Error).message}</small></span><button className="secondary compact" onClick={() => failed.refetch()}>{tr(lang, "s_retry")}</button></div>}
 
-    <Insights lang={lang} o={o} w={w} t={t} b={b} prio={stats.data ? { critical: stats.data.emergency_open, high: stats.data.urgent_open, moderate: stats.data.moderate_open, routine: stats.data.routine_open } : undefined} />
+    <Insights ownArea={ownArea} lang={lang} o={o} w={w} t={t} b={b} prio={stats.data ? { critical: stats.data.emergency_open, high: stats.data.urgent_open, moderate: stats.data.moderate_open, routine: stats.data.routine_open } : undefined} />
 
     <section className="an-today" aria-label={tr(lang, "an_today")}><h2 className="ad-h sm">{ward ? trf(lang, "an_todayWard", { ward }) : tr(lang, "an_today")}</h2>
       <div className="an-cards"><div><small>{tr(lang, "an_newToday")}</small><b>{na(today.data?.new_today)}</b></div><div><small>{tr(lang, "an_closedToday")}</small><b>{na(today.data?.closed_today)}</b></div><div className="danger"><small>{tr(lang, "an_nowOverdue")}</small><b>{na(today.data?.overdue)}</b></div></div></section>
@@ -247,7 +247,7 @@ export default function AnalysisTab({ lang, ward, category, setWard, setCategory
       <ul className="an-legend"><li><i style={{ background: COLOURS.reported }} />{tr(lang, "an_reported")}</li><li><i style={{ background: COLOURS.closed }} />{tr(lang, "an_closed")}</li><li><i style={{ background: COLOURS.open }} />{tr(lang, "an_openAtEnd")}</li></ul>
     </Chart>}
 
-    {w && <Chart lang={lang} title={wardTakeaway(lang, w)} summary={`${wardTakeaway(lang, w)}. ${w.items.map(i => `${i.ward}: ${i.open} ${tr(lang, "an_open")}, ${i.overdue} ${tr(lang, "an_overdue")}`).join("; ")}`}
+    {w && !ownArea && <Chart lang={lang} title={wardTakeaway(lang, w)} summary={`${wardTakeaway(lang, w)}. ${w.items.map(i => `${i.ward}: ${i.open} ${tr(lang, "an_open")}, ${i.overdue} ${tr(lang, "an_overdue")}`).join("; ")}`}
 >
       <AreaBars items={w.items} lang={lang} selected={ward} onPick={pickWard} />
       <div className="an-ward">

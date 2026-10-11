@@ -14,6 +14,7 @@ from .config import get_settings
 class Storage(Protocol):
     async def put(self, key: str, data: bytes, content_type: str) -> None: ...
     async def delete(self, key: str) -> None: ...
+    async def get(self, key: str) -> bytes: ...
     def signed_url(self, key: str) -> str: ...
     async def ensure_bucket(self) -> None: ...
 
@@ -44,6 +45,17 @@ class S3Storage:
     async def delete(self, key: str) -> None:
         await run_in_threadpool(self.client.remove_object, self.bucket, key)
 
+    async def get(self, key: str) -> bytes:
+        def read() -> bytes:
+            r = self.client.get_object(self.bucket, key)
+            try:
+                return r.read()
+            finally:
+                r.close()
+                r.release_conn()
+
+        return await run_in_threadpool(read)
+
     def signed_url(self, key: str) -> str:
         return self.signer.presigned_get_object(self.bucket, key, expires=self.ttl)
 
@@ -61,6 +73,9 @@ class MemoryStorage:
 
     async def delete(self, key: str) -> None:
         self.objects.pop(key, None)
+
+    async def get(self, key: str) -> bytes:
+        return self.objects[key][0]
 
     def signed_url(self, key: str) -> str:
         return f"https://storage.test/{key}?sig=test"

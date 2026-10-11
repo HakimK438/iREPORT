@@ -56,7 +56,7 @@ async def main() -> None:
             db.add(User(role="citizen", name="Seed marker", email=marker, password_hash=hash_password("!seed-no-login"), ward_id=None))
             topped.append(area)
             for n, (category, problem, desc, landmark, status) in enumerate(EXTRA):
-                lat, lng = spot(AREA_CENTRES[area], 10 + n)
+                lat, lng = spot(AREA_CENTRES[area], 10 + n, area)
                 photos = sorted((IMAGES / category).glob("*.jpg"))
                 fresh = photos[10:] or photos           # the additional photos first
                 reporter = citizens[(a_idx * 6 + n) % len(citizens)]
@@ -64,7 +64,7 @@ async def main() -> None:
                 key, thumb_key = new_keys()
                 await storage.put(key, proc.main, "image/webp")
                 await storage.put(thumb_key, proc.thumb, "image/webp")
-                m = Media(uploader_id=reporter.id, storage_key=key, thumb_key=thumb_key, width=proc.width, height=proc.height, bytes=len(proc.main), ai_label=category, ai_conf=0.9)
+                m = Media(uploader_id=reporter.id, storage_key=key, thumb_key=thumb_key, width=proc.width, height=proc.height, bytes=len(proc.main))
                 db.add(m)
                 await db.flush()
                 r = await create_report(db, reporter.id, ReportIn(media_ids=[m.id], category=category, problem_type=problem, description=desc, lat=lat, lng=lng,

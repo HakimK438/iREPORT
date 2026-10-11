@@ -49,7 +49,7 @@ class Settings(BaseSettings):
 
     # AI
     models_dir: str = "models"
-    image_model_name: str = "img-1.0"
+    image_model_name: str = "img-2.0"
     text_model_name: str = "txt-1.0"
     ai_uncertain_below: float = 0.60
     ai_threads: int = 2

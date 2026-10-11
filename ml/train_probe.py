@@ -22,6 +22,7 @@ from pathlib import Path
 
 import numpy as np
 import timm
+from PIL import Image
 import torch
 from export_onnx import accuracy, export_fp32, images_in, latency, preprocess, quantise_int8
 from sklearn.linear_model import LogisticRegression
@@ -33,10 +34,45 @@ MEAN = STD = [0.5, 0.5, 0.5]  # EfficientNet-Lite (TF port)
 SIZE = 224
 
 
-def features(backbone, folder: Path, classes: list[str]) -> tuple[np.ndarray, np.ndarray]:
+def preprocess_pil(img, flip: bool = False, crop: tuple[float, float, float, float] | None = None) -> np.ndarray:
+    """The API's preprocessing (resize short side, centre-crop) applied to a PIL image, optionally flipped or cropped first."""
+    img = img.convert("RGB")
+    if crop:
+        w, h = img.size
+        img = img.crop((round(crop[0] * w), round(crop[1] * h), round(crop[2] * w), round(crop[3] * h)))
+    if flip:
+        img = img.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+    short = round(SIZE / 0.875)
+    scale = short / min(img.size)
+    img = img.resize((max(SIZE, round(img.width * scale)), max(SIZE, round(img.height * scale))), Image.Resampling.BILINEAR)
+    left, top = (img.width - SIZE) // 2, (img.height - SIZE) // 2
+    x = np.asarray(img.crop((left, top, left + SIZE, top + SIZE)), dtype=np.float32).transpose(2, 0, 1) / 255.0
+    return ((x - 0.5) / 0.5)[None]
+
+
+def augmented(path: Path, n: int, rng: np.random.Generator) -> list[np.ndarray]:
+    """The same photo seen differently: mirrored, and cropped to 55 to 100 percent. Still one photo, so the per-class image count is unchanged."""
+    img = Image.open(path)
+    out = [preprocess_pil(img), preprocess_pil(img, flip=True)]
+    for _ in range(n):
+        f = float(rng.uniform(0.55, 1.0))
+        x0, y0 = float(rng.uniform(0, 1 - f)), float(rng.uniform(0, 1 - f))
+        out.append(preprocess_pil(img, flip=bool(rng.integers(2)), crop=(x0, y0, x0 + f, y0 + f)))
+    return out
+
+
+def features(backbone, folder: Path, classes: list[str], augment: int = 0) -> tuple[np.ndarray, np.ndarray]:
     xs, ys = [], []
+    rng = np.random.default_rng(7)
     for k, cls in enumerate(classes):
         files = sorted(images_in(folder / cls))
+        if augment:
+            views = [v for p in files for v in augmented(p, augment, rng)]
+            for i in range(0, len(views), 32):
+                with torch.no_grad():
+                    xs.append(backbone(torch.from_numpy(np.concatenate(views[i:i + 32]))).numpy())
+            ys += [k] * len(views)
+            continue
         for i in range(0, len(files), 32):
             batch = np.concatenate([preprocess(p, SIZE, MEAN, STD) for p in files[i:i + 32]])
             with torch.no_grad():
@@ -62,6 +98,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--data", type=Path, default=ROOT / "ml/data/images")
     ap.add_argument("--version", default="img-1.0")
+    ap.add_argument("--augment", type=int, default=0, help="extra random views per TRAINING photo (the photo count itself does not change)")
     args = ap.parse_args()
     torch.set_num_threads(12)
 
@@ -72,7 +109,7 @@ def main() -> None:
     model.eval()
     backbone = timm.create_model(ARCH, pretrained=True, num_classes=0)
     backbone.eval()
-    data = {s: features(backbone, args.data / s, classes) for s in ("train", "val", "test")}
+    data = {s: features(backbone, args.data / s, classes, args.augment if s == "train" else 0) for s in ("train", "val", "test")}
     print(f"features in {time.time() - t0:.0f}s", {s: len(v[1]) for s, v in data.items()})
 
     (xtr, ytr), (xva, yva), (xte, yte) = data["train"], data["val"], data["test"]

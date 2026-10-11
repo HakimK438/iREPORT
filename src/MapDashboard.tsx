@@ -61,11 +61,11 @@ export default function MapDashboard({ mode, lang = "en" }: { mode: "authority" 
       <label className="ad-check"><input type="checkbox" checked={showResolved} onChange={e => setShowResolved(e.target.checked)} /> {tr(lang, "m_showResolved")}</label>
       <label className="ad-check"><input type="checkbox" checked={showClusters} onChange={e => setShowClusters(e.target.checked)} /> {tr(lang, "m_showClusters")}</label>
     </div>
-    <div className="md-areas" role="group" aria-label="Filter by area">
+    {(data?.areas.length ?? 0) > 1 && <div className="md-areas" role="group" aria-label="Filter by area">
       <button className={!area ? "active" : ""} onClick={() => setArea("")} aria-pressed={!area}><b>{tr(lang, "ad_allAreas")}</b><small>{open.length} {tr(lang, "s_open")}</small></button>
       {data?.areas.map(a => <button key={a.area} className={area === a.area ? "active" : ""} onClick={() => setArea(area === a.area ? "" : a.area)} aria-pressed={area === a.area}>
         <AreaThumb area={a.area} /><span className="area-txt"><b>{a.area}</b><small>{a.open} {tr(lang, "s_open")}{a.critical ? <> · <span className="md-crit">{a.critical} {tr(lang, "s_critical")}</span></> : null}</small></span></button>)}
-    </div>
+    </div>}
 
 
     <Suspense fallback={<div className="pm-map skeleton-block" role="status">{tr(lang, "m_mapLoading")}</div>}>

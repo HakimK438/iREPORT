@@ -32,3 +32,4 @@ logs/
 ml/data/raw/
 ml/data/images/
 ml/runs/
+ml/data/images_v2/

@@ -8,7 +8,25 @@ iREPORT lets residents report broken roads, garbage, dead streetlights, water le
 
 Languages: English, Hindi and Marathi (the Hindi and Marathi text is machine-written and needs a native reader).
 
+> **Full explanation:** [PROJECT_GUIDE.md](PROJECT_GUIDE.md) covers the whole workflow, what every percentage and chart means, how clusters work, the models and the architecture, in a non-technical part and a technical part.
+>
 > Status: working application with automated tests. It has not been deployed to real users, so this file describes what the software does, not measured outcomes. See [PROJECT_EXPLAINED.md](#purpose-and-impact) for the purpose and impact, and [PROJECT_WORKFLOW.md](#complete-workflow) for how it works end to end.
+
+---
+
+## What is new in v3
+
+- **Area-wise officers.** Officers see and change only their own area and department (enforced on the server). Area tabs at the top of the Control room switch authority by signing in as that area's authority. Each tab shows the BMC ward office (ward letter, address, telephone, from the BMC ward list).
+- **No manual assigning.** The area authority is responsible; the officer who acts on a complaint becomes its owner. The next action is always one button: Acknowledge, Start work, Mark resolved.
+- **Safer resolving.** A completion note is required and is shown to the citizen. Bulk resolve is refused.
+- **Up to three problems at one place,** with a clear **Main problem** and **Other problems** section. Officers see which one was the main problem.
+- **Photo checks.** A new image model (`img-2.0`) recognises electrical hazards and drainage. A photo the model is sure is wrong is refused; a doubtful one flags the report "Potentially fake / needs review". Every complaint shows a one-line image check.
+- **Plain priority.** A "Top recommended problems" key explains Critical, High risk, Moderate risk and Routine with the fix-by time, and each complaint explains how its deadline was worked out.
+- **Calmer interface.** White cards with a thin border, only the priority label carries colour, a shorter complaint view with a "More details" fold, a professional footer, and a minimal landing header.
+- **Admin dashboard.** Eight summary cards, a weekly workload line chart, priority, problem-type and area bars, a department table, ranked hotspots, officer workload and printable report, all counted straight from the records.
+- **Area-only analysis.** An officer's Analysis tab covers their own area and starts with plain-language findings.
+- **A "How it works" page** for officers and admins with screenshots, in English, Hindi and Marathi.
+- **Demo data on real streets.** Seed scripts add complaints with relevant CivicFix photos, placed on real road points from OpenStreetMap so none sits in the sea.
 
 ---
 
@@ -35,7 +53,8 @@ Languages: English, Hindi and Marathi (the Hindi and Marathi text is machine-wri
 | Feature | What it does |
 |---|---|
 | Guided report flow | Pick the problem, answer a few quick questions (typed or spoken), add up to 3 photos, pin the exact spot (device GPS, photo GPS or tap on the map), review, submit. |
-| One report per spot | If you already reported the same spot within 50 m (any category) the server refuses a repeat and offers to **add a photo** to your report instead. |
+| Several problems at one place | A citizen can choose up to **3 problems** in step 1. The first is the **Main problem**; the rest are shown as "Other problems at this place" (each can be made main or removed). Each problem becomes its own complaint with its own answers, photos, priority and department. The officer sees which one was the main problem and what else was reported there. |
+| One report per spot | If you already reported the same spot within 50 m (any category) the server refuses a repeat and offers to **add a photo** to your report instead. The only exception is a batch of up to three problems filed together in one submission (`also_of`, see decision 87). |
 | Confirm instead of duplicating | If someone else already reported a problem within 50 m, you can **confirm** it. The affected count goes up without a second report. |
 | Photo and text assistance | Two small CPU models suggest a category from the photo and the description. The suggestion is **marked as unverified** and the citizen's choice always wins. A photo the image model is sure shows something else (or no civic problem) is **refused**: the citizen sees "Remove photo and upload another", and the server also rejects it on submit (`photo_mismatch`), so wrong images never fill the database. A weaker mismatch keeps the report but flags it for review. |
 | My Reports | A six-step timeline (Reported, Seen, Scheduled, Work started, Fixed, Closed), side states (On hold, Not accepted, Merged, Sent to the right department), and messages from the ward office. |
@@ -49,12 +68,13 @@ Languages: English, Hindi and Marathi (the Hindi and Marathi text is machine-wri
 | Feature | What it does |
 |---|---|
 | Area authority tabs | One tab per area authority ("Dadar Authority"). Your own area is highlighted. Another area needs that authority's own sign-in (in development the demo login is pre-filled). |
-| Count chips | All, New, Acknowledged, Scheduled, In progress, Awaiting verification, Closed, Overdue, Unassigned. Each number equals the list total for the same filters. A second row filters by priority: All priorities, Critical, High risk, Moderate risk, Routine. |
+| Count chips | All, New, Acknowledged, Scheduled, In progress, Awaiting verification, Closed, Overdue. Each number equals the list total for the same filters. A second row filters by priority: All priorities, Critical, High risk, Moderate risk, Routine. |
 | Hazard categories | CRITICAL, HIGH RISK, MODERATE RISK, ROUTINE, each with a symbol, a colour, a one-line reason and a recommended action. The internal score is never shown as the decision. |
 | Complaint list | The complaint's own photo (or a plain "No photo" box, never category art), what and where, hazard chip, due date or "Overdue", status, assignee. Search, area, category and sort filters. |
 | Incident brief | One complaint read top to bottom like a work order: what, why it is urgent (at most 3 reasons, each with its source), where (area picture, small map, Navigate, Copy location), evidence per reporter, history at this spot, nearby open work, timeline, messages. |
+| Image check (one line) | Each complaint states what the image model saw in the photo and whether it fits the reported problem, for example "the photo looks like Electrical Hazard (96% sure), which matches the reported problem". It also prints on the work order. It shows only the model's real result. |
 | Why this deadline | Each complaint explains its deadline: when it was reported, how long that priority allows (24 hours, 3 days, 14 days or 30 days), the deadline, how late it is, the officer's first action (or "nobody has acknowledged it yet") and who owns it. |
-| One next action | A single primary button that matches the status (Acknowledge, Assign, Schedule, Start work, Mark resolved). Everything else is under **More**: hold, reject, mark duplicate, transfer to another category, reassign. **Mark resolved** opens a box for a completion note (required, shown to the citizen). |
+| One next action | A single primary button that matches the status (Acknowledge, Start work, Mark resolved). Everything else is under **More**: schedule a visit, hold, reject, mark duplicate, transfer to another category. **Mark resolved** opens a box for a completion note (required, shown to the citizen). |
 | Potentially fake / needs review | A report whose photo only weakly matches, or whose photo and description disagree, is flagged. The officer opens it and chooses "It is genuine" or "Reject as fake". |
 | Bulk actions | Acknowledge, assign, schedule or message many complaints at once. **Resolving is never bulk.** Skipped items (including ones outside the officer's area or department) are reported. |
 | Map | Open complaints in the officer's own area, coloured by hazard category, problem clusters, area cards, cards showing each problem's own photo. |
@@ -156,17 +176,19 @@ backend/app/          FastAPI app
   priority.py         risk formula, response categories, reasons    risk_config.py   every tunable number
   status.py           the one definition of "open"                  brief.py         the complaint brief
   ai/                 text model, image model, rules (flags, severity, NLP)
-backend/alembic/      migrations 0001 to 0015
-backend/scripts/      seed_demo, seed_load, seed_area_problems, seed_extra_problems, load_osm, load_wards, bench, table_sizes
+backend/alembic/      migrations 0001 to 0016
+backend/scripts/      seed_demo, seed_load, seed_area_problems, seed_extra_problems, backfill_image_check, load_osm, load_wards, bench, table_sizes
+ml/                   prepare_data_v2.py builds the 20-per-class training set; train_probe.py trains and exports the model
 backend/seed_data/     110 dataset photos (Pothole, Road Damage, Garbage, Electrical Hazard, Drainage, Other) used by the seed scripts
-backend/tests/        pytest suite (131 tests)
+backend/tests/        pytest suite (133 tests)
 ml/                   offline training and evaluation of the two models
+PROJECT_GUIDE.md      the complete guide: workflow, meanings, clusters, models, architecture
 docs/                 AI_AND_GIS.md, I18N_REVIEW.md, screenshots/
 DECISIONS.md          every choice the brief left open, numbered
 REVIEW_AUTHORITY_V2.md  review notes and manual test script for the authority v2 work
 ```
 
-Migrations, in order: 0001 schema, 0002 seed (departments, categories, areas), 0003 list indexes, 0004 report evidence, 0005 report answers, 0006 more areas, 0007 Mumbai region areas, 0008 area fix, 0009 duplicate reports, 0010 status values, 0011 workflow, 0012 map features, 0013 risk priority, 0014 photo checks and the needs-review flag, 0015 owner backfill (every worked complaint has an owner).
+Migrations, in order: 0001 schema, 0002 seed (departments, categories, areas), 0003 list indexes, 0004 report evidence, 0005 report answers, 0006 more areas, 0007 Mumbai region areas, 0008 area fix, 0009 duplicate reports, 0010 status values, 0011 workflow, 0012 map features, 0013 risk priority, 0014 photo checks and the needs-review flag, 0015 owner backfill (every worked complaint has an owner), 0016 `reports.reported_with` (problems reported together).
 
 ---
 
@@ -183,7 +205,7 @@ docker compose up --build         # postgres+postgis (host port 5434), minio (90
 - Health: `GET /api/v1/health` (process up) and `GET /api/v1/ready` (database and models).
 - Migrations run when the API container starts. The first admin comes from `ADMIN_EMAIL` and `ADMIN_PASSWORD`.
 - Demo citizen, officer and complaints for development: `docker compose exec api python -m scripts.seed_demo` (refuses to run when `ENV=production`).
-- More demo data, with relevant photos from the CivicFix dataset: `python -m scripts.seed_area_problems` (10 complaints in each of 16 Mumbai areas and one ward officer per area), then `python -m scripts.seed_extra_problems` (6 more per area using the additional photos). Both skip areas that are already seeded. The dataset photos are in `backend/seed_data/images/`; no model is trained.
+- More demo data, with relevant photos from the CivicFix dataset: `python -m scripts.seed_area_problems` (10 complaints in each of 16 Mumbai areas and one ward officer per area), then `python -m scripts.seed_extra_problems` (6 more per area using the additional photos). Both skip areas that are already seeded. Afterwards run `python -m scripts.backfill_image_check` so each stored photo carries the model's real result (the officer's one-line "Image check" never shows an invented value). The dataset photos are in `backend/seed_data/images/`; no model is trained.
 
 Frontend:
 
@@ -208,7 +230,7 @@ More detail: [HOW_TO_RUN.md](#windows-run-guide) (Windows).
 docker compose --profile test run --rm tests        # in the Python 3.12 image (uses the ireport_test database)
 ```
 
-**131 backend tests** pass, plus 2 ML tests. They cover:
+**133 backend tests** pass, plus 2 ML tests. They cover:
 
 - authentication, refresh-token rotation and reuse detection, rate limits, role checks, authority approval
 - one report per spot (409 at 49 m versus 51 m, any category), the merge rule, the hourly report limit, add-photo, the nearby check, and the migration that flags old repeat reports
@@ -220,6 +242,7 @@ docker compose --profile test run --rm tests        # in the Python 3.12 image (
 - the photo check at submit (a wrong photo is refused, a doubtful one is flagged) and the review decisions
 - resolving needs a note, bulk resolve is refused, and an officer who works a complaint owns it
 - the admin dashboard totals equal the table counts
+- several problems at one place: extras are filed with the main complaint, a batch link must be the citizen's own recent report at that spot
 - the image pipeline, the AI endpoints, retention jobs
 
 Frontend: `npx tsc --noEmit` (one old error remains in `src/imports/vite.config.ts`, a missing `.figma` file) and `npx vite build`.
@@ -248,6 +271,7 @@ Rate limits: login, registration, photo analysis, 10 new reports per citizen per
 
 ## Data and AI honesty
 
+- **Image model v2 (`img-2.0`).** A frozen EfficientNet-Lite0 with a logistic-regression head, trained on **at most 20 images per class** (8 classes: Drainage, Electrical Hazard, Garbage, Other, Pothole, Road Damage, Streetlight, not_civic), mixing the older training folders with the CivicFix dataset (`ml/prepare_data_v2.py`, then `python ml/train_probe.py --data ml/data/images_v2 --version img-2.0 --augment 10`). Measured on photos it never trained on (708 test images): overall accuracy 75.7% (the previous model scored 63.6% on the same set, and 0% on electrical and drainage, which it had no class for). Recall: Electrical Hazard 93%, Drainage 92%, Road Damage 79%, Streetlight 83%, Garbage 71%, Other 68%, Pothole 58% (the dataset's pothole class is mostly wide road scenes). With the app's refuse and flag rules, a correct photo is wrongly refused 3.7% of the time (17.7% before; electrical 72% before, 2% now), but a non-civic photo sent as a report is refused 35 of 51 times (49 of 51 before): the rest are flagged or pass. The full-data model `img-1.0` is still in `backend/models/` and can be selected with `IMAGE_MODEL_NAME`.
 - The two models are small and run on CPU: a text model (character n-gram TF-IDF with logistic regression, held-out macro-F1 0.73 on a small hand-written set) and an image model (a frozen EfficientNet-Lite0 with a logistic-regression head, int8 ONNX, 3.8 MB). Details and limits: [ml/README.md](#model-training) and [docs/AI_AND_GIS.md](#ai-and-gis).
 - Model output is a **suggestion**. It is labelled "AI suggestion, not verified" wherever it appears to an officer, it never changes the citizen's chosen category, and it is never used to set the hazard category or a due date.
 - No confidence value is invented. A number is shown only when a model produced it.
@@ -260,8 +284,7 @@ Rate limits: login, registration, photo analysis, 10 new reports per citizen per
 ## Known gaps
 
 - **The seeded complaints are demo data.** Their dates, statuses and fix times were set by the seed scripts, so figures such as "fixed on time" and "typical fix time" on the admin dashboard are not meaningful until real complaints are resolved. The dashboard counts honestly what is in the database.
-- The image model has no classes for electrical hazards and water leakage, so photos for those are accepted without a check. The CivicFix dataset has no streetlight photos, so none are seeded. Its pothole class is mostly wide road scenes, and its garbage class includes ocean waste; only clear street-level photos were used.
-- The Analysis tab's numbers are not limited to the officer's area (the complaint list, counts, map and detail are).
+- The image model is trained on at most 20 images per class, so it is weaker than the earlier full-data model on Pothole, Garbage and Other (see "Data and AI honesty"). Electrical Hazard and Drainage are now covered; Water Leakage from a burst pipe is not a separate class. The CivicFix dataset has no streetlight photos, so none are seeded. Its pothole class is mostly wide road scenes, and its garbage class includes ocean waste; only clear street-level photos were used.
 - The new admin dashboard text is English only; the How it works page and the officer panel are translated.
 - The OpenStreetMap download for map checks failed during the last build, so "near a school" and "on a main road" currently use the citizen's flags.
 - Location pictures are the project's own files; there is no automated fetch script and no licence check on them. One symbol image carries a stock-site watermark.
@@ -467,9 +490,9 @@ Repeat reports from before this rule existed were flagged by migration 0009 (`re
 
 ### 6. Officer: the control room
 
-**Count chips** (All, New, Acknowledged, Scheduled, In progress, Resolved (awaiting citizen), Closed, Overdue, Unassigned) filter the list. The chip numbers and the list total use the same SQL predicates, under the same ward, category and search filters, and a test compares them.
+**Count chips** (All, New, Acknowledged, Scheduled, In progress, Awaiting verification, Closed, Overdue) filter the list. The chip numbers and the list total use the same SQL predicates, under the same ward, category and search filters, and a test compares them.
 
-**List card:** picture, what and where, complaint number, assignee (or Unassigned), hazard chip with symbol, due date or Overdue, status.
+**List card:** picture, what and where, complaint number, hazard chip with symbol, "Fix by" date or Overdue, status.
 
 **Filters:** search, area, category, hazard category, sort (most urgent, due date, newest, oldest, most citizens). Paging is by keyset cursor so every row appears exactly once.
 
@@ -495,7 +518,7 @@ Top to bottom: header (number, category, status, hazard chip, due), the hazard p
 | On Hold | Resume work |
 | Resolved, Closed, Rejected, Duplicate | none (waiting for the citizen, or final) |
 
-Everything else is under **More**: reassign, hold, reject, mark duplicate, transfer to another category, reopen for rework.
+Everything else is under **More**: schedule, hold, reject, mark duplicate, transfer to another category, reopen for rework.
 
 #### Rules enforced by `workflow.apply_officer_update`
 
@@ -956,6 +979,8 @@ Where the build spec was unclear or could not be followed exactly, this is the s
 84. **Admin figures are plain counts.** `GET /admin/performance` uses the analytics definitions (open by status, overdue = open and past due_at, on time = resolved on or before due_at, median days to resolve). Nothing is estimated.
 85. **Seed data comes from the CivicFix dataset, without training.** Photos were chosen by quality (no black borders, sharp, diverse) and by eye; 110 are kept in `backend/seed_data/images/`.
 
+87. **Up to three problems per place, filed as a batch.** Multi-select had been switched off (`MAX_CATEGORIES = 1`) because the one-report-per-spot rule refused the second report. The extra problems now carry `also_of` (the main complaint's id); the server accepts it only if the main report is the citizen's own, under 30 minutes old and within the merge radius, and records it in `reports.reported_with` so each complaint's brief shows the main problem and the others.
+86. **Image model v2 uses at most 20 images per class.** Chosen to cover Electrical Hazard and Drainage cheaply; accuracy is measured on held-out photos and published above rather than assumed. Training photos are never reused as test photos.
 
 ---
 

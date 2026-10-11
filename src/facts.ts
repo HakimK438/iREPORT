@@ -8,8 +8,8 @@ export type NextAction = "acknowledge" | "assign" | "schedule" | "start" | "resu
 export function nextAction(r: { status: string; assignee: unknown }): NextAction {
   switch (r.status) {
     case "Reported": return "acknowledge";
-    case "Acknowledged": return r.assignee ? "schedule" : "assign";
-    case "Reopened": return r.assignee ? "start" : "assign";
+    case "Acknowledged": return "start";
+    case "Reopened": return "start";
     case "Scheduled": return "start";
     case "In Progress": return "resolve";
     case "On Hold": return "resume";

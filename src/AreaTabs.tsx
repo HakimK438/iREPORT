@@ -2,6 +2,18 @@ import { useState, type FormEvent } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Session } from "./api";
 import { Icon } from "./Icon";
+import { wardOfArea } from "./wards";
+
+const BASE = import.meta.env.BASE_URL;
+const slug = (a: string) => a.toLowerCase().replace(/\s+/g, "-");
+
+/** The BMC ward office behind an area: ward letter, address and telephone (BMC ward list), with the area picture. */
+function WardCard({ area }: { area: string }) {
+  const w = wardOfArea(area);
+  if (!w) return null;
+  return <div className="ward-card"><img src={`${BASE}areas/${slug(area)}.png`} alt="" onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+    <div><b>BMC {w.ward} Ward Office</b><small>{w.address}</small><small>Tel. {w.phone}</small></div></div>;
+}
 
 // Development only (the demo accounts from scripts/seed_area_problems.py). In a production build the box stays empty.
 const DEMO_PASSWORD = "ward12345";
@@ -36,12 +48,15 @@ export default function AreaTabs({ onSwitch }: { onSwitch: (s: Session) => void 
     }
   };
 
+  const mine = items.find(a => a.is_mine);
   return <section className="area-tabs-wrap" aria-label="Area authorities">
     <div className="area-tabs" role="tablist" aria-label="Area authorities">
       {items.map(a => <button key={a.area} role="tab" aria-selected={a.is_mine} className={`${a.is_mine ? "active" : ""}${target === a.area ? " target" : ""}`} onClick={() => pick(a.area, a.is_mine)}>
         {a.is_mine && <Icon name="shield" size={14} />} {a.area} Authority</button>)}
     </div>
+    {!target && mine && <WardCard area={mine.area} />}
     {target && <form className="area-login" onSubmit={e => void submit(e)}>
+      <WardCard area={target} />
       <p><b>{target} Authority</b>: sign in with this authority's login to see and manage {target}'s complaints.</p>
       <label className="fld"><span>Email</span><input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" required /></label>
       <label className="fld"><span>Password</span><input type={import.meta.env.DEV ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" required /></label>

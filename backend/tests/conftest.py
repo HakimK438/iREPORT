@@ -11,6 +11,7 @@ prepare(_HERE / ".models", _HERE.parent / "models")
 
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://ireport:ireport@localhost:5434/ireport_test")
 os.environ["MODELS_DIR"] = str(_HERE / ".models")
+os.environ["IMAGE_MODEL_NAME"] = "img-1.0"  # the tests build their own stand-in model under this name
 os.environ.update(
     ENV="test", STORAGE_BACKEND="memory", ENABLE_SCHEDULER="false",
     ADMIN_EMAIL="admin@example.com", ADMIN_PASSWORD="admin-pass-123",

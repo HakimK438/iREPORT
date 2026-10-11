@@ -131,6 +131,8 @@ class AiIn(Strict):
 
 class ReportIn(Strict):
     media_ids: list[uuid.UUID] = Field(default_factory=list, max_length=3)
+    # An extra problem reported together with the main one: the main complaint's id. Skips the one-report-per-spot check for this batch only.
+    also_of: uuid.UUID | None = None
     category: str = Field(min_length=1, max_length=40)
     problem_type: str | None = Field(default=None, max_length=60)
     description: str | None = Field(default=None, max_length=500)

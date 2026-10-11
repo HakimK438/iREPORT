@@ -6,6 +6,7 @@ import { api, type ApiUser, type ChipId, type Hotspot, type Session } from "./ap
 import Brief, { DueText, Evidence, ResponseChip, StatusPill } from "./IncidentDetail";
 import MapDashboard from "./MapDashboard";
 import AreaTabs from "./AreaTabs";
+import RecoHeader from "./RecoHeader";
 import { CategoryPhoto } from "./brand";
 import { tr, trf, type Lang, type StrKey } from "./i18n";
 import { catLabel, deptLabel } from "./i18nStaff";
@@ -15,7 +16,7 @@ const AnalysisTab = lazy(() => import("./AnalysisTab"));
 /** The count chips above the list. Each chip's number comes from /authority/stats and equals the list total for the same filters. */
 const CHIPS: { id: ChipId; key: StrKey }[] = [
   { id: "all", key: "c_all" }, { id: "new", key: "c_new" }, { id: "acknowledged", key: "c_acknowledged" }, { id: "scheduled", key: "c_scheduled" },
-  { id: "in_progress", key: "c_in_progress" }, { id: "resolved", key: "c_resolved" }, { id: "closed", key: "c_closed" }, { id: "overdue", key: "c_overdue" }, { id: "unassigned", key: "c_unassigned" },
+  { id: "in_progress", key: "c_in_progress" }, { id: "resolved", key: "c_resolved" }, { id: "closed", key: "c_closed" }, { id: "overdue", key: "c_overdue" },
 ];
 type Sort = "priority" | "newest" | "oldest" | "affected" | "due";
 const PAGE = 50;
@@ -77,7 +78,6 @@ export default function AuthorityDashboard({ user, lang = "en", onSwitch }: { us
 
   const [bulkPanel, setBulkPanel] = useState<null | "assign" | "schedule" | "message">(null);
   const [bulkText, setBulkText] = useState(""), [bulkDate, setBulkDate] = useState(""), [bulkOfficer, setBulkOfficer] = useState("");
-  const officers = useQuery({ queryKey: ["authority", "officers"], queryFn: api.officers, enabled: bulkPanel === "assign", staleTime: 5 * 60_000 });
   const bulkMut = useMutation({
     mutationFn: (body: Parameters<typeof api.authorityBulk>[0]) => api.authorityBulk(body),
     onSuccess: () => { setSelected([]); setBulkPanel(null); setBulkText(""); qc.invalidateQueries({ queryKey: ["authority"] }); },
@@ -101,12 +101,11 @@ export default function AuthorityDashboard({ user, lang = "en", onSwitch }: { us
     </div>
 
     {tab === "analysis" && <div role="tabpanel" id="panel-analysis" aria-labelledby="tab-analysis"><Suspense fallback={<p className="muted-line" role="status">{tr(lang, "s_loading")}</p>}>
-      <AnalysisTab lang={lang} ward={area} category={cat} setWard={w => setArea(w)} setCategory={setCat} openList={() => setTab("complaints")} /></Suspense></div>}
+      <AnalysisTab ownArea={user.area} lang={lang} ward={area} category={cat} setWard={w => setArea(w)} setCategory={setCat} openList={() => setTab("complaints")} /></Suspense></div>}
 
     {tab === "complaints" && <div role="tabpanel" id="panel-complaints" aria-labelledby="tab-complaints">
       <div className="ad-toolbar">
         <label className="ad-search"><Icon name="search" size={18} /><input value={search} onChange={e => setSearch(e.target.value)} maxLength={100} placeholder={tr(lang, "ad_search")} aria-label={tr(lang, "ad_search")} /></label>
-        <select value={area} onChange={e => setArea(e.target.value)} aria-label={tr(lang, "ad_allAreas")}><option value="">{tr(lang, "ad_allAreas")}</option>{AREAS.map(a => <option key={a}>{a}</option>)}</select>
         <select value={cat} onChange={e => setCat(e.target.value)} aria-label={tr(lang, "s_category")}><option value="">{tr(lang, "m_allCats")}</option>{CATEGORY_NAMES.map(c => <option key={c} value={c}>{catLabel(lang, c)}</option>)}</select>
         <select value={sort} onChange={e => setSort(e.target.value as Sort)} aria-label={tr(lang, "v_sort")}><option value="priority">{tr(lang, "v_sortUrgent")}</option><option value="due">{tr(lang, "v_sortDue")}</option><option value="newest">{tr(lang, "ad_sortNew")}</option><option value="oldest">{tr(lang, "ad_sortOld")}</option><option value="affected">{tr(lang, "v_sortCitizens")}</option></select>
       </div>
@@ -126,7 +125,7 @@ export default function AuthorityDashboard({ user, lang = "en", onSwitch }: { us
       </div>
       <p className="muted-line ad-updated" aria-live="polite">{s ? `${trf(lang, "v_emergencyOpen", { n: s.emergency_open })} · ${trf(lang, "v_dueToday", { n: s.due_today })} · ` : ""}{updatedAgo === null ? tr(lang, "s_loading") : updatedAgo < 8 ? tr(lang, "ad_justNow") : `${tr(lang, "s_updatedAgo")} ${updatedAgo} ${tr(lang, "s_secAgo")}`}</p>
 
-      <h2 className="ad-h sm">{tr(lang, "ad_list")}</h2>
+      {sort === "priority" ? <RecoHeader lang={lang} /> : <h2 className="ad-h sm">{tr(lang, "ad_list")}</h2>}
       <div className="ad-listhead"><label className="ad-check"><input type="checkbox" checked={allVisibleSelected} onChange={toggleAll} aria-label={trf(lang, "v_selectAllAria", { n: Math.min(rows.length, 100) })} /> {tr(lang, "s_selectAll")} {rows.length}{total > rows.length ? ` ${tr(lang, "s_of")} ${total}` : ""}</label>{filtered && <button className="text-button" onClick={clearFilters}>{tr(lang, "s_clearFilters")}</button>}</div>
 
       <div className="ad-list">
@@ -141,7 +140,7 @@ export default function AuthorityDashboard({ user, lang = "en", onSwitch }: { us
               <div className="ad-media"><Evidence url={issue.thumb_url} category={issue.category} alt={catLabel(lang, issue.category)} /></div>
               <button className="ad-main" onClick={() => setOpenId(open ? null : issue.id)} aria-expanded={open}>
                 <b>{issue.title}</b>
-                <span className="ad-meta"><span className="loc"><Icon name="pin" size={14} /> {issue.area ?? tr(lang, "s_noArea")}</span><span className="tag">{issue.public_id}</span><span className={`who${issue.assignee ? "" : " none"}`}><Icon name="profile" size={14} /> {issue.assignee ? issue.assignee.name : tr(lang, "v_unassigned")}</span></span>
+                <span className="ad-meta"><span className="loc"><Icon name="pin" size={14} /> {issue.area ?? tr(lang, "s_noArea")}</span><span className="tag">{issue.public_id}</span></span>
               </button>
               <div className="ad-side">
                 <span className="ad-urgency"><ResponseChip response={issue.response} lang={lang} /><DueText row={issue} lang={lang} /></span>
@@ -158,12 +157,9 @@ export default function AuthorityDashboard({ user, lang = "en", onSwitch }: { us
       {selected.length > 0 && <div className="ad-bulk" role="region" aria-label={tr(lang, "v_bulkRegion")}>
         <b>{selected.length} {tr(lang, "s_selected")}</b>
         <button className="secondary compact" disabled={bulkMut.isPending} onClick={() => bulkMut.mutate({ ids, status: "Acknowledged" })}>{tr(lang, "v_a_acknowledge")}</button>
-        <button className="secondary compact" onClick={() => setBulkPanel(bulkPanel === "assign" ? null : "assign")}>{tr(lang, "v_a_assign")}</button>
         <button className="secondary compact" onClick={() => setBulkPanel(bulkPanel === "schedule" ? null : "schedule")}>{tr(lang, "v_a_schedule")}</button>
         <button className="secondary compact" onClick={() => setBulkPanel(bulkPanel === "message" ? null : "message")}>{tr(lang, "s_message")}</button>
         <button className="text-button" onClick={() => { setSelected([]); setBulkPanel(null); }}>{tr(lang, "s_clear")}</button>
-        {bulkPanel === "assign" && <span className="bulk-row"><select value={bulkOfficer} onChange={e => setBulkOfficer(e.target.value)} aria-label={tr(lang, "v_a_assign")}>{officers.data?.items.map(o => <option key={o.id} value={o.id}>{o.name}{o.is_me ? ` (${tr(lang, "v_me")})` : ""}</option>)}</select>
-          <button className="primary compact" disabled={bulkMut.isPending || !(bulkOfficer || officers.data?.items.length)} onClick={() => bulkMut.mutate({ ids, assigned_to: bulkOfficer || officers.data?.items[0]?.id })}>{tr(lang, "v_confirm")}</button></span>}
         {bulkPanel === "schedule" && <span className="bulk-row"><input type="date" value={bulkDate} onChange={e => setBulkDate(e.target.value)} aria-label={tr(lang, "v_visitDate")} />
           <button className="primary compact" disabled={bulkMut.isPending || !bulkDate} onClick={() => bulkMut.mutate({ ids, status: "Scheduled", scheduled_for: bulkDate })}>{tr(lang, "v_confirm")}</button></span>}
         {bulkPanel === "message" && <span className="bulk-row"><input value={bulkText} maxLength={1000} onChange={e => setBulkText(e.target.value)} placeholder={tr(lang, "s_bulkPlaceholder")} aria-label={tr(lang, "s_bulkPlaceholder")} />

@@ -401,7 +401,16 @@ async def create_report(db: AsyncSession, user_id: uuid.UUID, body: ReportIn) ->
 
     # One citizen's reports are serialised, so two quick taps cannot both pass the duplicate check.
     await db.execute(text("SELECT pg_advisory_xact_lock(4243, hashtext(:u))"), {"u": str(user_id)})
-    own = await own_open_report(db, user_id, body.lat, body.lng)
+    batch = None
+    if body.also_of:  # a deliberate batch: the main report must be this citizen's own, made in the last 30 minutes, at this spot
+        batch = await db.scalar(text("""
+            SELECT i.id FROM reports r JOIN incidents i ON i.id = r.incident_id
+            WHERE i.id = :m AND r.user_id = :u AND r.duplicate_of_report_id IS NULL AND r.created_at > now() - interval '30 minutes'
+              AND ST_DWithin(i.location, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, :radius) LIMIT 1"""),
+            {"m": body.also_of, "u": user_id, "lat": body.lat, "lng": body.lng, "radius": s.merge_radius_m})
+        if batch is None:
+            raise ApiError(422, "invalid_batch", "The main report for these problems was not found. Please start again.")
+    own = None if batch else await own_open_report(db, user_id, body.lat, body.lng)
     if own:
         raise ApiError(409, "already_reported", f"You already reported this ({own.public_id}). You can add a photo to it instead.",
                        extra={"id": str(own.id), "public_id": own.public_id, "category": own.category, "status": own.status})
@@ -452,8 +461,9 @@ async def create_report(db: AsyncSession, user_id: uuid.UUID, body: ReportIn) ->
     ai = body.ai
     report_id = await db.scalar(text("""
         INSERT INTO reports (incident_id, user_id, problem_type, description, ai_category_id, ai_confidence, model_version, user_corrected,
-                             location_source, citizen_message, ai_source, ai_disagreement, nlp, answers)
-        VALUES (:i, :u, :p, :d, :ai, :conf, :mv, :corrected, :src, :msg, :ais, CAST(:dis AS jsonb), CAST(:nlp AS jsonb), CAST(:answers AS jsonb)) RETURNING id"""), {
+                             location_source, citizen_message, ai_source, ai_disagreement, nlp, answers, reported_with)
+        VALUES (:i, :u, :p, :d, :ai, :conf, :mv, :corrected, :src, :msg, :ais, CAST(:dis AS jsonb), CAST(:nlp AS jsonb), CAST(:answers AS jsonb), :rw) RETURNING id"""), {
+        "rw": batch,
         "i": incident_id, "u": user_id, "p": body.problem_type, "d": body.description or None,
         "ai": ai_cat.id if ai_cat else None, "conf": ai.confidence if ai else None,
         "mv": ai.model_version if ai else None, "corrected": bool(ai_cat and ai_cat.id != category.id),

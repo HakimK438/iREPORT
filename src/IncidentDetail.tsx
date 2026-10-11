@@ -88,6 +88,17 @@ function AreaPhoto({ area }: { area: string | null }) {
 
 type Panel = null | "assign" | "schedule" | "hold" | "reject" | "duplicate" | "transfer" | "resolve";
 
+/** Print this complaint only. Two complaints can be open at once (list and map); without this both would be printed. */
+function printBrief(button: HTMLElement) {
+  const brief = button.closest(".brief");
+  if (!brief) { window.print(); return; }
+  brief.classList.add("printing-this");
+  document.body.classList.add("print-one");
+  const done = () => { brief.classList.remove("printing-this"); document.body.classList.remove("print-one"); window.removeEventListener("afterprint", done); };
+  window.addEventListener("afterprint", done);
+  window.print();
+}
+
 export default function Brief({ id, lang = "en", readOnly = false, onClose }: { id: string; lang?: Lang; readOnly?: boolean; onClose?: () => void }) {
   const qc = useQueryClient();
   // Photo links are signed for 15 minutes, so refresh the open brief every 10 minutes.
@@ -119,6 +130,14 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
   const open = isOpen(status);
   const stamp = (iso: string) => new Date(iso).toLocaleString(LOCALE[lang], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
   const span = (ms: number) => { const h = Math.max(1, Math.round(ms / 3_600_000)); return h >= 48 ? `${Math.round(h / 24)} ${tr(lang, "s_days")}` : `${h} ${tr(lang, h === 1 ? "v_hourWord" : "v_hoursWord")}`; };
+  // One line from the image model: what the first checked photo looks like, and whether that fits the reported problem.
+  const checked = d.evidence.flatMap(e => e.photos).find(ph => ph.ai_label && ph.ai_conf != null);
+  const MERGE: Record<string, string> = { "Road Damage": "Pothole", Drainage: "Water Leakage" };
+  const aiLine = !checked ? tr(lang, "v_aiNone") : (() => {
+    const label = checked.ai_label === "not_civic" ? tr(lang, "v_aiNotCivic") : catLabel(lang, checked.ai_label!);
+    const same = checked.ai_label !== "not_civic" && (checked.ai_label === "Other" || d.category === "Other" || (MERGE[checked.ai_label!] ?? checked.ai_label) === (MERGE[d.category] ?? d.category));
+    return trf(lang, same ? "v_aiMatch" : "v_aiDiff", { label, pct: Math.round((checked.ai_conf ?? 0) * 100), category: catLabel(lang, d.category) });
+  })();
   const firstOfficerStep = d.timeline.find(h => h.by && h.status !== "Reported");
   const basis = {
     rule: d.due_at ? trf(lang, "v_basisRule", { rep: stamp(d.created_at), level: tr(lang, `resp_${d.response}` as StrKey), within: span(d.response_hours * 3_600_000), due: stamp(d.due_at) }) : "",
@@ -153,13 +172,10 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
   const panelReady = panel === "resolve" ? text.trim().length >= 5 : panel === "assign" ? !!(officer || officers.data?.items.length) : panel === "schedule" ? !!date : panel === "transfer" ? !!category && !!text.trim() : !!text.trim();
   const moreItems: { key: Panel | "ack" | "start" | "res"; label: StrKey }[] = [];
   if (!readOnly && open) {
-    if (action !== "assign") moreItems.push({ key: "assign", label: d.assignee ? "v_m_reassign" : "v_a_assign" });
-    if (status !== "Acknowledged" && action !== "acknowledge") moreItems.push({ key: "ack", label: "v_a_acknowledge" });
     if (action !== "schedule") moreItems.push({ key: "schedule", label: "v_a_schedule" });
-    if (status !== "In Progress" && action !== "start" && action !== "resume") moreItems.push({ key: "start", label: "v_a_start" });
+    if (action !== "resolve") moreItems.push({ key: "res", label: "v_a_resolve" });
     if (status !== "On Hold") moreItems.push({ key: "hold", label: "v_m_hold" });
     moreItems.push({ key: "reject", label: "v_m_reject" }, { key: "duplicate", label: "v_m_duplicate" }, { key: "transfer", label: "v_m_transfer" });
-    if (action !== "resolve") moreItems.push({ key: "res", label: "v_a_resolve" });
   } else if (!readOnly && status === "Resolved") moreItems.push({ key: "start", label: "v_m_rework" });
   const pickMore = (k: Panel | "ack" | "start" | "res") => { if (k === "ack") run({ status: "Acknowledged" }); else if (k === "start") run({ status: "In Progress" }); else if (k === "res") setPanel("resolve"); else setPanel(k); };
 
@@ -167,22 +183,22 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
     <header className="brief-head">
       <div className="brief-id"><b>{d.public_id}</b><span className="cat-tag"><CategoryPhoto category={d.category} className="cat-dot" label={false} />{catLabel(lang, d.category)}</span><StatusPill status={status} lang={lang} /><ResponseChip response={d.response} lang={lang} /><DueText row={d} lang={lang} />
         {d.reopen_count > 0 && <span className="due red">{trf(lang, "v_reopened", { n: d.reopen_count })}</span>}</div>
-      <div className="brief-tools">{onClose && <button className="secondary compact" onClick={onClose}>{tr(lang, "m_close")}</button>}<button className="secondary compact print-btn" onClick={() => window.print()}>{tr(lang, "v_print")}</button></div>
+      <div className="brief-tools">{onClose && <button className="secondary compact" onClick={onClose}>{tr(lang, "m_close")}</button>}<button className="secondary compact print-btn" onClick={e => printBrief(e.currentTarget)}>{tr(lang, "v_print")}</button></div>
     </header>
 
-    <section className={`sev-panel sev-${d.response.toLowerCase()}`} aria-label={tr(lang, `resp_${d.response}` as StrKey)}>
-      <span className="sev-icon" aria-hidden="true"><SevImg response={d.response} size={40} /></span>
-      <div><b>{tr(lang, `resp_${d.response}` as StrKey)}</b>
-        <p><span>{tr(lang, "v_sevReason")}:</span> {reasons[0] ? reasonText(lang, reasons[0]) : tr(lang, "v_whyNone")}</p>
-        <p><span>{tr(lang, "v_sevAction")}:</span> {tr(lang, `resp_${d.response}_tip` as StrKey)}</p></div>
+    <section className="summary" aria-label={tr(lang, "v_what")}>
+      <p className="what">{whatSentence(d, lang)}</p>
+      <p className="why-line"><b className={`lvl lvl-${d.response.toLowerCase()}`}>{tr(lang, `resp_${d.response}` as StrKey)}</b> {tr(lang, `lvl_${d.response}` as StrKey)}</p>
+      <dl className="facts">
+        {d.due_at && <div><dt>{tr(lang, "v_fixByLabel")}</dt><dd>{stamp(d.due_at)}{open && <span className={d.overdue ? "late" : "left"}> · {d.overdue ? trf(lang, "v_late", { late: span(Date.now() - new Date(d.due_at).getTime()) }) : trf(lang, "v_left", { left: span(new Date(d.due_at).getTime() - Date.now()) })}</span>}</dd></div>}
+        <div><dt>{tr(lang, "v_reportedLabel")}</dt><dd>{stamp(d.created_at)} · {trf(lang, d.citizens === 1 ? "v_reportedBy1" : "v_reportedByN", { n: d.citizens ?? 1 })}</dd></div>
+        <div><dt>{tr(lang, "v_responsible")}</dt><dd>{trf(lang, "v_areaAuthority", { area: d.area ?? "—" })} · {dept}</dd></div>
+      </dl>
+      {d.due_at && <p className="muted-line">{trf(lang, "v_deadlineRule", { within: span(d.response_hours * 3_600_000), level: tr(lang, `resp_${d.response}` as StrKey) })}</p>}
+      {d.scheduled_for && <p className="meta-line">{trf(lang, "v_visit", { date: shortDate(d.scheduled_for, lang) })}</p>}
+      {d.duplicate_of && <p className="meta-line">{trf(lang, "v_dupOf", { no: d.duplicate_of })}</p>}
+      {d.status_reason && ["On Hold", "Rejected", "Reopened", "Transferred"].includes(status) && <p className="meta-line">{staffStatus(lang, status)}: {d.status_reason}</p>}
     </section>
-
-    {d.due_at && <section className="due-basis" aria-label={tr(lang, "v_deadline")}>
-      <b>{tr(lang, "v_deadline")}</b>
-      <p>{basis.rule}</p>
-      {basis.state && <p className={d.overdue ? "late" : ""}>{basis.state}</p>}
-      <p className="muted-line">{basis.acted} {basis.owner}</p>
-    </section>}
 
     {d.needs_review && <section className="rv-panel" role="alert" aria-label={tr(lang, "rv_title")}>
       <b><Icon name="alert" size={16} /> {tr(lang, "rv_title")}</b>
@@ -192,21 +208,6 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
           <button className="secondary compact" disabled={review.isPending} onClick={() => review.mutate({ decision: "fake" })}>{tr(lang, "rv_fake")}</button></div>
         {review.isError && <div className="form-error" role="alert">{(review.error as Error).message}</div>}</>}
     </section>}
-
-    <section aria-label={tr(lang, "v_what")}>
-      <h3>{tr(lang, "v_what")}</h3>
-      <p className="what">{whatSentence(d, lang)}</p>
-      <p className="meta-line">{trf(lang, d.citizens === 1 ? "v_reportedBy1" : "v_reportedByN", { n: d.citizens ?? 1 })}{estimate ? ` · ${trf(lang, "v_estimate", { text: estimate })}` : ""}</p>
-      {photoDisagrees && <p className="meta-line warn"><em className="ai-flag">{tr(lang, "v_aiUnverified")}</em> {trf(lang, "v_photoCheck", { looks: catLabel(lang, d.ai.category ?? ""), chosen: catLabel(lang, d.category) })}</p>}
-      {d.duplicate_of && <p className="meta-line">{trf(lang, "v_dupOf", { no: d.duplicate_of })}</p>}
-      <p className="meta-line">{d.assignee ? trf(lang, "v_assigned", { name: d.assignee.name, dept, ward: d.area ?? "—" }) : <>{tr(lang, "v_unassigned")}</>}{d.scheduled_for ? ` · ${trf(lang, "v_visit", { date: shortDate(d.scheduled_for, lang) })}` : ""}</p>
-      {d.status_reason && ["On Hold", "Rejected", "Reopened", "Transferred"].includes(status) && <p className="meta-line">{staffStatus(lang, status)}: {d.status_reason}</p>}
-    </section>
-
-    <section aria-label={tr(lang, "v_why")}>
-      <h3>{tr(lang, "v_why")}</h3>
-      {reasons.length === 0 ? <p className="muted-line">{tr(lang, "v_whyNone")}</p> : <ul className="why-list">{reasons.map((r, k) => <li key={k}><span>{reasonText(lang, r)}</span><em className={`src src-${r.source}`}>{tr(lang, `v_src_${r.source}` as StrKey)}</em></li>)}</ul>}
-    </section>
 
     <section aria-label={tr(lang, "v_where")}>
       <h3>{tr(lang, "v_where")}</h3>
@@ -227,6 +228,18 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
       </figure>)}</div>
     </section>}
 
+    <details className="more-detail">
+      <summary>{tr(lang, "v_moreDetails")}</summary>
+    <section aria-label={tr(lang, "v_why")}>
+      <h3>{tr(lang, "v_why")}</h3>
+      {reasons.length === 0 ? <p className="muted-line">{tr(lang, "v_whyNone")}</p> : <ul className="why-list">{reasons.map((r, k) => <li key={k}><span>{reasonText(lang, r)}</span><em className={`src src-${r.source}`}>{tr(lang, `v_src_${r.source}` as StrKey)}</em></li>)}</ul>}
+    </section>
+      <p className="ai-line">{aiLine}</p>
+      {(d.batch.main || d.batch.others.length > 0) && <p className="batch-line">
+        {d.batch.main ? <><b>{tr(lang, "v_batchPart")}</b> {trf(lang, "v_batchMain", { no: d.batch.main.public_id, category: catLabel(lang, d.batch.main.category) })}</> : <b>{tr(lang, "v_batchMainIs")}</b>}
+        {d.batch.others.length > 0 && <> {tr(lang, "v_batchOthers")} {d.batch.others.map(o => `${o.public_id} (${catLabel(lang, o.category)})`).join(", ")}.</>}
+      </p>}
+      {photoDisagrees && <p className="meta-line warn"><em className="ai-flag">{tr(lang, "v_aiUnverified")}</em> {trf(lang, "v_photoCheck", { looks: catLabel(lang, d.ai.category ?? ""), chosen: catLabel(lang, d.category) })}</p>}
     {d.history_here.count > 0 && <section aria-label={tr(lang, "v_histHere")}>
       <h3>{tr(lang, "v_histHere")}</h3>
       <p>{trf(lang, "v_histLine", { n: d.history_here.count, category: catLabel(lang, d.category), radius: d.history_here.radius_m, days: d.history_here.days })} <b>{tr(lang, "v_histCheck")}</b></p>
@@ -238,6 +251,8 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
       <p>{trf(lang, "v_nearbyLine", { n: d.nearby_open.count, radius: d.nearby_open.radius_m })} <b>{tr(lang, "v_sameCrew")}</b></p>
       <ul className="plain">{d.nearby_open.items.map(n => <li key={n.id}>{n.public_id} · {catLabel(lang, n.category)} · {n.distance_m} m · {staffStatus(lang, n.status)}</li>)}</ul>
     </section>}
+
+    </details>
 
     <section aria-label={tr(lang, "v_timeline")}>
       <h3>{tr(lang, "v_timeline")}</h3>
@@ -280,7 +295,7 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
         <tr><th>{tr(lang, "p_category")}</th><td>{catLabel(lang, d.category)}</td><th>{tr(lang, "s_dept")}</th><td>{dept}</td></tr>
         <tr><th>{tr(lang, "p_status")}</th><td>{staffStatus(lang, status)}</td><th>{tr(lang, "p_reported")}</th><td>{new Date(d.created_at).toLocaleString(LOCALE[lang], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</td></tr>
         <tr><th>{tr(lang, "p_dueBy")}</th><td>{d.due_at ? shortDate(d.due_at, lang) : "—"}{d.overdue ? ` (${tr(lang, "v_overdueToday")})` : ""}</td><th>{tr(lang, "p_citizens")}</th><td>{d.citizens ?? 1}</td></tr>
-        <tr><th>{tr(lang, "p_assignedTo")}</th><td>{d.assignee ? `${d.assignee.name} · ${dept}, ${d.area ?? "—"}` : tr(lang, "v_unassigned")}</td><th>{tr(lang, "p_siteVisit")}</th><td>{d.scheduled_for ? shortDate(d.scheduled_for, lang) : "______"}</td></tr>
+        <tr><th>{tr(lang, "v_responsible")}</th><td>{trf(lang, "v_areaAuthority", { area: d.area ?? "—" })} · {dept}</td><th>{tr(lang, "p_siteVisit")}</th><td>{d.scheduled_for ? shortDate(d.scheduled_for, lang) : "______"}</td></tr>
         <tr><th>{tr(lang, "v_where")}</th><td colSpan={3}>{[d.where.address, d.where.area].filter(Boolean).join(" · ") || tr(lang, "s_noArea")}<br /><small>{tr(lang, "p_gps")}: {d.where.lat.toFixed(5)}, {d.where.lng.toFixed(5)} · {navigateUrl(d.where.lat, d.where.lng)}</small></td></tr>
       </tbody></table>
       {d.needs_review && <><h4>{tr(lang, "p_reviewNote")}</h4><p>{tr(lang, "rv_title")}: {d.review_reason}</p></>}
@@ -288,7 +303,7 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
       {d.reasons.length > 0 && <><h4>{tr(lang, "v_why")}</h4><ul>{d.reasons.map((r, k) => <li key={k}>{reasonText(lang, r)} <i>({tr(lang, `v_src_${r.source}` as StrKey)})</i></li>)}</ul></>}
       {d.evidence.length > 0 && <><h4>{tr(lang, "p_reporters")}</h4><ul>{d.evidence.map((e, k) => <li key={k}><b>{e.reporter}</b>, {new Date(e.at).toLocaleString(LOCALE[lang], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}{e.description ? `: “${e.description}”` : ""}{e.citizen_message ? ` (${tr(lang, "ad_citizenSays")}: “${e.citizen_message}”)` : ""}</li>)}</ul>
         {d.evidence.some(e => e.photos.length > 0) && <div className="ps-photos">{d.evidence.flatMap(e => e.photos).slice(0, 4).map((ph, k) => <img key={k} src={ph.thumb_url} alt="" />)}</div>}</>}
-      {d.ai.category && <><h4>{tr(lang, "p_mlTitle")}</h4><p>{trf(lang, "p_mlLine", { category: catLabel(lang, d.ai.category), pct: d.ai.confidence != null ? Math.round(d.ai.confidence * 100) : "–" })}</p></>}
+      <h4>{tr(lang, "p_mlTitle")}</h4><p>{aiLine}</p>
       {d.history_here.count > 0 && <><h4>{tr(lang, "v_histHere")}</h4><p>{trf(lang, "v_histLine", { n: d.history_here.count, category: catLabel(lang, d.category), radius: d.history_here.radius_m, days: d.history_here.days })} {tr(lang, "v_histCheck")}</p><ul>{d.history_here.items.map(h => <li key={h.public_id}>{h.public_id} · {shortDate(h.created_at, lang)} · {staffStatus(lang, h.status)}</li>)}</ul></>}
       {d.nearby_open.count > 0 && <><h4>{tr(lang, "v_nearby")}</h4><p>{trf(lang, "v_nearbyLine", { n: d.nearby_open.count, radius: d.nearby_open.radius_m })} {tr(lang, "v_sameCrew")}</p><ul>{d.nearby_open.items.map(n => <li key={n.id}>{n.public_id} · {catLabel(lang, n.category)} · {n.distance_m} m · {staffStatus(lang, n.status)}</li>)}</ul></>}
       {d.timeline.length > 0 && <><h4>{tr(lang, "v_timeline")}</h4><table className="ps-lines"><tbody>{d.timeline.map((h, k) => <tr key={k}><td>{new Date(h.at).toLocaleString(LOCALE[lang], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</td><td>{h.note ? h.reason : staffStatus(lang, h.status)}{!h.note && h.reason ? `: ${h.reason}` : ""}</td><td>{h.by ?? ""}</td></tr>)}</tbody></table></>}

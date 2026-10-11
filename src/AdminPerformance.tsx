@@ -15,7 +15,7 @@ function printSheet() {
 }
 
 const stamp = (d?: string | Date) => (d ? new Date(d) : new Date()).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
-const COLOUR = { critical: "#b3261e", high: "#e8710a", moderate: "#c9a400", routine: "#2e7d6b", resolved: "#2e7d6b", open: "#5b3fa0", reported: "#c9a400", overdue: "#b3261e", other: "#f0a35e" };
+const COLOUR = { critical: "#a63d32", high: "#b8651b", moderate: "#a88a2a", routine: "#7b8794", resolved: "#1f8a5b", open: "#4b5d73", reported: "#2563c9", overdue: "#a63d32", other: "#c9a37a" };
 const CAT_COLOUR: Record<string, string> = { Pothole: "#b3261e", "Road Damage": "#8a3b2e", Garbage: "#2e7d6b", Streetlight: "#c9a400", "Water Leakage": "#1f6fb2", Drainage: "#1f6fb2", "Electrical Hazard": "#5b3fa0", Other: "#6b7a72" };
 
 function Card({ title, takeaway, children, wide }: { title?: string; takeaway: string; children: React.ReactNode; wide?: boolean }) {
@@ -25,7 +25,7 @@ function Card({ title, takeaway, children, wide }: { title?: string; takeaway: s
 /** Line chart: weekly complaints reported, complaints finished, and the open backlog at the end of each week. Every point is a count. */
 function WeeklyLines({ weeks }: { weeks: AdminDash["weeks"] }) {
   const W = 720, H = 250, pad = { l: 36, r: 16, t: 14, b: 32 };
-  const max = Math.max(4, ...weeks.flatMap(w => [w.reported, w.closed, w.open_at_end]));
+  const max = Math.max(4, ...weeks.flatMap(w => [w.reported, w.closed]));
   const top = Math.ceil(max / 4) * 4;
   const x = (k: number) => pad.l + (k * (W - pad.l - pad.r)) / Math.max(1, weeks.length - 1);
   const y = (v: number) => H - pad.b - (v / top) * (H - pad.t - pad.b);
@@ -37,7 +37,7 @@ function WeeklyLines({ weeks }: { weeks: AdminDash["weeks"] }) {
   return <svg viewBox={`0 0 ${W} ${H}`} className="an-svg" role="img" aria-label="Weekly complaints reported, finished and still open">
     {[0, 1, 2, 3, 4].map(i => { const v = (top / 4) * i; return <g key={i}><line x1={pad.l} x2={W - pad.r} y1={y(v)} y2={y(v)} stroke="#e3e8e5" /><text x={pad.l - 6} y={y(v) + 4} fontSize="10" textAnchor="end" fill="#5b6a63">{v}</text></g>; })}
     {weeks.map((w, k) => (k % 2 === (weeks.length - 1) % 2) && <text key={w.week} x={x(k)} y={H - 10} fontSize="10" textAnchor="middle" fill="#5b6a63">{label(w.week)}</text>)}
-    {line("open_at_end", COLOUR.open, "6 4")}{line("reported", COLOUR.reported)}{line("closed", COLOUR.resolved)}
+    {line("reported", COLOUR.reported)}{line("closed", COLOUR.resolved)}
   </svg>;
 }
 
@@ -82,7 +82,7 @@ export default function AdminPerformance({ lang = "en" }: { lang?: Lang }) {
     { label: "Open complaints", value: s.open, sub: `of ${s.total} received` },
     { label: "Critical and high risk", value: s.critical + s.high, sub: `${s.critical} critical · ${s.high} high risk`, tone: s.critical + s.high ? "danger" : "good" },
     { label: "Overdue", value: s.overdue, sub: "open and past the deadline", tone: s.overdue ? "danger" : "good" },
-    { label: "Not assigned", value: s.unassigned, sub: "open, no officer yet", tone: s.unassigned ? "warn" : "good" },
+    { label: "Waiting to be acknowledged", value: s.waiting, sub: "new, no officer has acted yet", tone: s.waiting ? "warn" : "good" },
     { label: "Resolved", value: s.resolution_rate === null ? "–" : `${s.resolution_rate}%`, sub: `${s.resolved} resolved · rejected and duplicates not counted`, tone: "good" },
     { label: "Fixed on time", value: s.on_time_pct === null ? "–" : `${s.on_time_pct}%`, sub: s.median_days === null ? "no fixes yet" : `typical fix takes ${s.median_days} day${s.median_days === 1 ? "" : "s"}`, tone: s.on_time_pct !== null && s.on_time_pct < 50 ? "danger" : "good" },
     { label: "New in 7 days", value: s.new_7d, sub: delta(s.new_7d, s.prev_7d) },
@@ -91,6 +91,7 @@ export default function AdminPerformance({ lang = "en" }: { lang?: Lang }) {
   const people: [string, number][] = [["Citizen reports", s.reports], ["Citizens registered", s.citizens], ["Officers approved", s.officers], ["Officer approvals pending", s.pending_approvals], ["Reports to review", s.needs_review]];
   const first = d.weeks[0], last = d.weeks[d.weeks.length - 1];
   const trend = last.open_at_end - first.open_at_end;
+  const weekTitle = `This week: ${last.reported} new complaints received, ${last.closed} finished`;
   const trendTitle = trend > 0 ? `The open backlog grew by ${trend} over 12 weeks` : trend < 0 ? `The open backlog fell by ${-trend} over 12 weeks` : "The open backlog is unchanged over 12 weeks";
   const worstArea = d.areas[0];
   const topCat = d.categories[0];
@@ -106,19 +107,26 @@ export default function AdminPerformance({ lang = "en" }: { lang?: Lang }) {
     </section>
 
     <section className="admin-card">
+      <h2>Situation summary</h2>
+      <ul className="ad-insights">
+        <li><b>{s.open}</b> complaints are open, and <b>{s.critical + s.high}</b> of them are critical or high risk.</li>
+        {worstArea && worstArea.open > 0 && <li><b>{worstArea.area}</b> has the most open complaints ({worstArea.open}){worstArea.overdue ? `, ${worstArea.overdue} past their fix-by time` : ""}.</li>}
+        <li>{s.overdue > 0 ? <><b>{s.overdue}</b> complaints are past their fix-by time. Clear these first.</> : "No complaint is past its fix-by time."}</li>
+        {s.on_time_pct !== null && <li><b>{s.on_time_pct}%</b> of fixed complaints were finished on time.</li>}
+      </ul>
       <div className="ad-grid">
-        <Card wide title="Trend" takeaway={trendTitle}>
+        <Card wide title="Weekly workload" takeaway={weekTitle}>
           <WeeklyLines weeks={d.weeks} />
-          <ul className="an-legend"><li><i style={{ background: COLOUR.reported }} />Reported each week</li><li><i style={{ background: COLOUR.resolved }} />Finished each week</li><li><i style={{ background: COLOUR.open }} />Still open at week end</li></ul>
+          <ul className="an-legend"><li><i style={{ background: COLOUR.reported }} />New complaints received</li><li><i style={{ background: COLOUR.resolved }} />Complaints finished</li></ul>
         </Card>
         <Card title="Priority" takeaway={s.critical + s.high > 0 ? `${s.critical + s.high} open complaints are critical or high risk` : "No critical or high-risk complaints are open"}>
           <Bars rows={mix} />
         </Card>
         <Card title="Problem types" takeaway={topCat && topCat.open > 0 ? `${catLabel(lang, topCat.category)} is the most common open problem (${topCat.open} of ${s.open})` : "No open complaints"}>
-          <Donut rows={openCats} />
+          <Bars rows={openCats.slice(0, 6)} />
         </Card>
-        <Card wide title="Areas" takeaway={worstArea && worstArea.open > 0 ? `${worstArea.area} has the most open complaints (${worstArea.open}${worstArea.overdue ? `, ${worstArea.overdue} overdue` : ""})` : "No open complaints in any area"}>
-          <AreaStacks areas={d.areas} />
+        <Card wide title="Areas" takeaway={worstArea && worstArea.open > 0 ? `${worstArea.area} has the most open complaints (${worstArea.open})` : "No open complaints in any area"}>
+          <Bars rows={d.areas.filter(a => a.open > 0).slice(0, 8).map(a => ({ label: a.area, value: a.open, colour: COLOUR.open, note: a.overdue ? `${a.overdue} overdue` : undefined }))} />
         </Card>
       </div>
     </section>
@@ -134,11 +142,10 @@ export default function AdminPerformance({ lang = "en" }: { lang?: Lang }) {
     <section className="admin-card">
       <h2>Where problems pile up</h2><p className="muted-line">Hotspots: three or more open complaints within 400 m of each other in the last 30 days, ranked by impact score.</p>
       {d.hotspots.length === 0 && <p className="muted-line">No hotspots right now.</p>}
-      <ol className="ad-hot">{d.hotspots.map((h, k) => <li key={h.id}>
+      <ol className="ad-hot">{d.hotspots.map((h, k) => { const merged = new Map<string, number>(); h.categories.forEach(c => merged.set(catLabel(lang, c.category), (merged.get(catLabel(lang, c.category)) ?? 0) + c.count)); return <li key={h.id}>
         <i className="rank">{k + 1}</i>
         <div><div className="row"><b>{h.area}</b><span className="track"><i style={{ width: `${(h.impact_score / maxImpact) * 100}%` }} /></span><strong>{h.impact_score}<small>/100</small></strong></div>
-          <p>{h.open_incidents} open{h.critical ? ` · ${h.critical} critical` : ""} · {h.unique_citizens} citizen{h.unique_citizens === 1 ? "" : "s"} · {h.categories.map(c => `${catLabel(lang, c.category)} ×${c.count}`).join(", ")}</p>
-          <small>{hotspotReasons(h, lang).join(" · ")}</small></div></li>)}</ol>
+          <p>{h.open_incidents} open{h.critical ? `, ${h.critical} critical` : ""} · {[...merged].map(([n, c]) => `${n} ${c}`).join(" · ")}</p></div></li>; })}</ol>
     </section>
 
     <section className="admin-card">

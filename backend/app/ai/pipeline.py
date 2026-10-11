@@ -125,7 +125,7 @@ def analyze(images: list[Image.Image], text: str | None, problem_type: str | Non
     photo_checks: list[dict] = []  # one entry per photo the image model could judge
     # The image model only knows the classes it was trained on. If the citizen already chose a category it
     # has no data for (e.g. Drainage), its answer would be a guess among the wrong classes: skip it.
-    covered = chosen_category is None or chosen_category in models.image.labels if models.image else False
+    covered = (chosen_category is None or MERGED.get(chosen_category, chosen_category) in {MERGED.get(label, label) for label in models.image.labels}) if models.image else False
     if images and models.image and not covered:
         status["image"] = "category_not_covered"
     if images and models.image and covered:

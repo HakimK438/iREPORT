@@ -122,7 +122,7 @@ async def performance(_: Admin, db: Db):
                count(*) FILTER (WHERE {o} AND i.risk >= 12) AS critical, count(*) FILTER (WHERE {o} AND i.risk >= 8 AND i.risk < 12) AS high,
                count(*) FILTER (WHERE {o} AND i.risk >= 4 AND i.risk < 8) AS moderate, count(*) FILTER (WHERE {o} AND i.risk < 4) AS routine,
                count(*) FILTER (WHERE {o} AND i.due_at < now()) AS overdue, count(*) FILTER (WHERE {o} AND i.assigned_to IS NULL) AS unassigned,
-               count(*) FILTER (WHERE i.status = 'Resolved') AS awaiting_citizen, count(*) FILTER (WHERE i.needs_review AND {o}) AS needs_review,
+               count(*) FILTER (WHERE i.status IN ('Reported', 'Reopened')) AS waiting, count(*) FILTER (WHERE i.status = 'Resolved') AS awaiting_citizen, count(*) FILTER (WHERE i.needs_review AND {o}) AS needs_review,
                count(*) FILTER (WHERE i.created_at > now() - interval '7 days') AS new_7d,
                count(*) FILTER (WHERE i.created_at <= now() - interval '7 days' AND i.created_at > now() - interval '14 days') AS prev_7d,
                count(*) FILTER (WHERE r.resolved_at IS NOT NULL AND r.resolved_at <= i.due_at) AS on_time,
@@ -134,7 +134,7 @@ async def performance(_: Admin, db: Db):
                (SELECT count(*) FROM authority_profiles a JOIN users u ON u.id = a.user_id WHERE u.deleted_at IS NULL AND a.approval = 'approved') AS officers
         FROM incidents i LEFT JOIN res r ON r.incident_id = i.id"""))).mappings().one()
     pct = lambda n, d: round(100 * n / d) if d else None  # noqa: E731
-    keys = ("total", "open", "resolved", "critical", "high", "moderate", "routine", "overdue", "unassigned", "awaiting_citizen", "needs_review",
+    keys = ("total", "open", "resolved", "critical", "high", "moderate", "routine", "overdue", "unassigned", "waiting", "awaiting_citizen", "needs_review",
             "new_7d", "prev_7d", "reports", "citizens", "pending_approvals", "officers")
     summary = {k: t[k] for k in keys}
     summary.update(resolution_rate=pct(t["resolved"], t["valid"]), on_time_pct=pct(t["on_time"], t["resolved"]), reopen_pct=pct(t["reopened"], t["resolved"]),

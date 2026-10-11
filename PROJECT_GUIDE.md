@@ -1,5 +1,7 @@
 # iREPORT: the complete project guide
 
+> Version **v3**. Lives next to the [README](README.md), which is the quick start and feature list.
+
 How a civic problem travels from a citizen's phone to a closed job, what every number and chart means, how clusters work, and how the system is built.
 
 This guide has two parts. **Part A** needs no technical background. **Part B** is for engineers and reviewers. The short README is the quick start; this is the full explanation.

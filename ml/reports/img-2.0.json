@@ -1,0 +1,88 @@
+{
+  "version": "img-2.0",
+  "method": "linear probe on frozen EfficientNet-Lite0 features",
+  "classes": [
+    "Drainage",
+    "Electrical Hazard",
+    "Garbage",
+    "Other",
+    "Pothole",
+    "Road Damage",
+    "Streetlight",
+    "not_civic"
+  ],
+  "images": {
+    "train": 1920,
+    "val": 140,
+    "test": 708
+  },
+  "C": 5.0,
+  "temperature": 1.85,
+  "val_macro_f1": 0.8033,
+  "test_macro_f1_sklearn": 0.7767,
+  "test_accuracy_fp32": 0.7571,
+  "test_accuracy_int8": 0.7641,
+  "shipped": "model.int8.onnx",
+  "latency": {
+    "threads": 2,
+    "p50_ms": 17.6,
+    "p95_ms": 55.6,
+    "mb": 3.83
+  },
+  "data_manifest": {
+    "train_cap_per_class": 20,
+    "classes": [
+      "Drainage",
+      "Electrical Hazard",
+      "Garbage",
+      "Other",
+      "Pothole",
+      "Road Damage",
+      "Streetlight",
+      "not_civic"
+    ],
+    "counts": {
+      "Drainage": {
+        "train": 20,
+        "val": 10,
+        "test": 60
+      },
+      "Electrical Hazard": {
+        "train": 20,
+        "val": 10,
+        "test": 60
+      },
+      "Garbage": {
+        "train": 20,
+        "val": 20,
+        "test": 118
+      },
+      "Other": {
+        "train": 20,
+        "val": 20,
+        "test": 119
+      },
+      "Pothole": {
+        "train": 20,
+        "val": 20,
+        "test": 120
+      },
+      "Road Damage": {
+        "train": 20,
+        "val": 20,
+        "test": 120
+      },
+      "Streetlight": {
+        "train": 20,
+        "val": 20,
+        "test": 60
+      },
+      "not_civic": {
+        "train": 20,
+        "val": 20,
+        "test": 51
+      }
+    }
+  },
+  "caveat": "Small, third-party, non-Mumbai data. Water Leakage, Drainage and Electrical Hazard have no data and are not predicted."
+}

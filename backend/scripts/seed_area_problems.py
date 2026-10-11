@@ -7,6 +7,7 @@ so it can be run again to add newly listed areas.
 """
 
 import asyncio
+import json
 import math
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -44,8 +45,19 @@ STATUSES = ["Reported", "Reported", "Reported", "Reported", "Acknowledged", "Ack
 STEPS = ["Acknowledged", "Scheduled", "In Progress", "Resolved", "Closed"]
 
 
-def spot(centre: tuple[float, float], n: int) -> tuple[float, float]:
-    """Ten points on a spiral around the area centre, 150 m or more apart so nothing merges and the map stays readable."""
+_ROADS: dict[str, list[list[float]]] | None = None
+
+
+def spot(centre: tuple[float, float], n: int, area: str | None = None) -> tuple[float, float]:
+    """A real street location in the area (seed_data/road_points.json, from scripts.make_road_points), 100 m or more from the others, so
+    nothing merges and nothing lands in the sea. Without that file: points on a spiral around the area centre."""
+    global _ROADS
+    if _ROADS is None:
+        f = IMAGES.parent / "road_points.json"
+        _ROADS = json.loads(f.read_text()) if f.exists() else {}
+    pts = _ROADS.get(area or "", [])
+    if n < len(pts):
+        return pts[n][0], pts[n][1]
     r = 160 + 70 * n                    # metres from the centre
     a = n * 2.4                         # golden-angle-ish turn
     return centre[0] + r * math.sin(a) / 111_320, centre[1] + r * math.cos(a) / (111_320 * math.cos(math.radians(centre[0])))
@@ -85,7 +97,7 @@ async def main() -> None:
             if area not in fresh:
                 continue
             for n, (category, problem, desc, landmark) in enumerate(PROBLEMS):
-                lat, lng = spot(AREA_CENTRES[area], n)
+                lat, lng = spot(AREA_CENTRES[area], n, area)
                 photos = sorted((IMAGES / category).glob("*.jpg"))
                 reporter = citizens[(a_idx * 10 + n) % len(citizens)]
                 media_ids = []
@@ -94,7 +106,7 @@ async def main() -> None:
                     key, thumb_key = new_keys()
                     await storage.put(key, proc.main, "image/webp")
                     await storage.put(thumb_key, proc.thumb, "image/webp")
-                    m = Media(uploader_id=reporter.id, storage_key=key, thumb_key=thumb_key, width=proc.width, height=proc.height, bytes=len(proc.main), ai_label=category, ai_conf=0.9)
+                    m = Media(uploader_id=reporter.id, storage_key=key, thumb_key=thumb_key, width=proc.width, height=proc.height, bytes=len(proc.main))
                     db.add(m)
                     await db.flush()
                     media_ids = [m.id]

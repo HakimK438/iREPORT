@@ -15,7 +15,7 @@ type Spot = { lat: number; lng: number; source: "photo" | "gps" | "manual"; labe
 
 const SPEECH_LANG: Record<Lang, string> = { en: "en-IN", hi: "hi-IN", mr: "mr-IN" };
 // One category per report: the server refuses a second report from the same citizen within 50 m (any category), so extra problems at one spot cannot be filed.
-const MAX_PHOTOS = 3, MAX_CATEGORIES = 1;
+const MAX_PHOTOS = 3, MAX_CATEGORIES = 3;
 const STEP_KEYS: StrKey[] = ["stepProblem", "stepQuestions", "stepPhotoLoc", "stepReview", "stepDone"];
 
 type Recognition = { lang: string; interimResults: boolean; continuous: boolean; start: () => void; stop: () => void; onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal?: boolean }> }) => void) | null; onend: (() => void) | null; onerror: ((e: { error?: string }) => void) | null };
@@ -100,13 +100,15 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
   const next = () => setStep(s => Math.min(5, s + 1));
   const back = () => { if (step === 1) close(); else setStep(s => s - 1); };
 
+  /** Put one of the chosen problems first: the first is the main complaint, the rest are filed with it. */
+  const makeMain = (name: string) => setSelected(list => [name, ...list.filter(c => c !== name)]);
+
   const toggleCategory = (name: string) => {
     if (selected.includes(name)) {
       const rest = selected.filter(c => c !== name);
       setShots(sh => sh.map(x => (x.cat === name ? { ...x, cat: rest[0] ?? x.cat } : x))); // photos of a removed problem move to the main one
       setSelected(rest);
-    } else if (MAX_CATEGORIES === 1) setSelected([name]);
-    else if (selected.length < MAX_CATEGORIES) setSelected([...selected, name]);
+    } else if (selected.length < MAX_CATEGORIES) setSelected([...selected, name]);
   };
 
   /* ---------- evidence ---------- */
@@ -328,7 +330,7 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
           }
           const okMedia = (analysis?.media_ids ?? []).filter(id => !(analysis?.photo_checks ?? []).some(c => c.media_id === id && !c.matches));
           all.push(await api.createReport({
-            media_ids: okMedia, category: extra, problem_type: m.problem, description: text || undefined, ...place,
+            also_of: res.incident_id, media_ids: okMedia, category: extra, problem_type: m.problem, description: text || undefined, ...place,
             flags: [...new Set([...(analysis?.flags ?? []), ...m.flags])], citizen_message: message.trim() || undefined, answers: Object.keys(a).length ? a : undefined,
             ai: analysis?.category ? { category: analysis.category, confidence: analysis.confidence, model_version: analysis.model_version, source: analysis.source === "none" ? undefined : analysis.source, disagreement: analysis.disagreement ?? undefined } : undefined,
           }));
@@ -383,7 +385,7 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
     </div> : null;
 
   const categoryButtons = (picked: string[], onPick: (name: string) => void, multi = false) => (
-    <div className="flow-categories">{categories.map(([name, icon]) => { const n = picked.indexOf(name); return <button className={n >= 0 ? "selected" : ""} aria-pressed={n >= 0} onClick={() => onPick(name)} key={name}><CategoryThumb name={name} icon={icon} /><b>{catName(lang, name)}</b><small>{(CAT_HINT[name] ?? CAT_HINT.Other)[lang]}</small>{n >= 0 && (multi ? <em className="pick-badge">{n === 0 ? tr(lang, "mainBadge") : `+${n}`}</em> : <Icon name="check" />)}</button>; })}</div>
+    <div className="flow-categories">{categories.map(([name, icon]) => { const n = picked.indexOf(name); return <button className={n >= 0 ? "selected" : ""} aria-pressed={n >= 0} onClick={() => onPick(name)} key={name}><CategoryThumb name={name} icon={icon} /><b>{catName(lang, name)}</b><small>{(CAT_HINT[name] ?? CAT_HINT.Other)[lang]}</small>{n >= 0 && (multi ? <em className="pick-badge">{n === 0 ? tr(lang, "mainBadge") : tr(lang, "alsoBadge")}</em> : <Icon name="check" />)}</button>; })}</div>
   );
 
   const canQuestions = selected.length > 0 && selected.every(c => { const q = QUESTIONS[c] ?? []; return q.length === 0 || !!answersBy[c]?.[q[0].id]; });
@@ -397,6 +399,12 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
 
       {step === 1 && <><span className="flow-eyebrow">1 · {tr(lang, "stepProblem").toUpperCase()}</span><h2>{tr(lang, "whatNeeds")}</h2><p>{tr(lang, "pickMulti")}</p>
         {categoryButtons(selected, toggleCategory, true)}
+        {selected.length > 0 && <section className="pick-summary" aria-label={tr(lang, "mainProblem")}>
+          <div><small>{tr(lang, "mainProblem")}</small><span className="pick-chip main"><b>{catName(lang, selected[0])}</b></span></div>
+          <div><small>{tr(lang, "otherProblems")}</small>{selected.length === 1 ? <p className="muted-line">{tr(lang, "otherNone")}</p> : <span className="pick-chips">{selected.slice(1).map(c => <span className="pick-chip" key={c}><b>{catName(lang, c)}</b>
+            <button className="text-button" onClick={() => makeMain(c)}>{tr(lang, "makeMain")}</button><button className="text-button" onClick={() => toggleCategory(c)} aria-label={`${tr(lang, "removeProblem")} ${catName(lang, c)}`}>×</button></span>)}</span>}</div>
+          {selected.length > 1 && <p className="muted-line">{tr(lang, "eachOwnTeam")}</p>}
+        </section>}
         <button className="primary full" disabled={selected.length === 0} onClick={next}>{tr(lang, "next")} <Icon name="arrow" /></button></>}
 
       {step === 2 && category && <><span className="flow-eyebrow">2 · {tr(lang, "stepQuestions").toUpperCase()}</span><h2>{tr(lang, "fewQuestions")}</h2><p>{tr(lang, "tapAnswer")}</p>

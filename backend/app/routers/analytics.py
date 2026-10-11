@@ -20,7 +20,7 @@ from .. import risk_config as cfg
 from ..deps import Authority, Db
 from ..refdata import AREA_CENTRES
 from ..status import open_sql
-from .authority import View, _base_filters, _filters
+from .authority import OfficerScope, View, _base_filters, _filters
 
 router = APIRouter(prefix="/authority", tags=["analytics"])
 
@@ -48,7 +48,8 @@ Filters = tuple[str | None, str | None, date | None, date | None]
 
 
 @router.get("/analytics/overview")
-async def overview(_: Authority, db: Db, ward: str | None = None, category: str | None = None, date_from: date | None = None, date_to: date | None = None):
+async def overview(authority: Authority, db: Db, ward: str | None = None, category: str | None = None, date_from: date | None = None, date_to: date | None = None):
+    ward = OfficerScope(authority).area or ward  # an officer's analysis is about their own area only
     w, p = scope(ward, category, date_from, date_to)
     r = (await db.execute(text(f"""
         WITH {RES}
@@ -70,7 +71,8 @@ async def overview(_: Authority, db: Db, ward: str | None = None, category: str 
 
 
 @router.get("/analytics/backlog")
-async def backlog(_: Authority, db: Db, ward: str | None = None, category: str | None = None):
+async def backlog(authority: Authority, db: Db, ward: str | None = None, category: str | None = None):
+    ward = OfficerScope(authority).area or ward  # an officer's analysis is about their own area only
     """Last 12 weeks (Monday to Sunday, IST): complaints reported, complaints the officers finished, and how many were still open at week end."""
     w, p = scope(ward, category, None, None, dates=False)
     rows = (await db.execute(text(f"""
@@ -86,8 +88,9 @@ async def backlog(_: Authority, db: Db, ward: str | None = None, category: str |
 
 
 @router.get("/analytics/by-ward")
-async def by_ward(_: Authority, db: Db, ward: str | None = None, category: str | None = None, date_from: date | None = None, date_to: date | None = None):
-    w, p = scope(None, category, date_from, date_to)  # a ward filter would leave one row: the table is the ward comparison
+async def by_ward(authority: Authority, db: Db, ward: str | None = None, category: str | None = None, date_from: date | None = None, date_to: date | None = None):
+    ward = OfficerScope(authority).area or ward  # an officer's analysis is about their own area only
+    w, p = scope(OfficerScope(authority).area, category, date_from, date_to)  # city-wide officers get the ward comparison; area officers only their own
     rows = (await db.execute(text(f"""
         WITH {RES}
         SELECT wd.name AS ward, count(*) AS total, count(*) FILTER (WHERE {open_sql('i')}) AS open,
@@ -100,7 +103,8 @@ async def by_ward(_: Authority, db: Db, ward: str | None = None, category: str |
 
 
 @router.get("/analytics/by-type")
-async def by_type(_: Authority, db: Db, ward: str | None = None, category: str | None = None, date_from: date | None = None, date_to: date | None = None):
+async def by_type(authority: Authority, db: Db, ward: str | None = None, category: str | None = None, date_from: date | None = None, date_to: date | None = None):
+    ward = OfficerScope(authority).area or ward  # an officer's analysis is about their own area only
     w, p = scope(ward, None, date_from, date_to)
     rows = (await db.execute(text(f"""
         WITH {RES}
@@ -138,7 +142,8 @@ async def by_type(_: Authority, db: Db, ward: str | None = None, category: str |
 
 
 @router.get("/analytics/performance")
-async def performance(_: Authority, db: Db, ward: str | None = None, category: str | None = None, date_from: date | None = None, date_to: date | None = None):
+async def performance(authority: Authority, db: Db, ward: str | None = None, category: str | None = None, date_from: date | None = None, date_to: date | None = None):
+    ward = OfficerScope(authority).area or ward  # an officer's analysis is about their own area only
     """Share of resolved complaints closed within their due date, and the reopen rate, per department and per ward."""
     w, p = scope(ward, category, date_from, date_to)
 
@@ -156,7 +161,8 @@ async def performance(_: Authority, db: Db, ward: str | None = None, category: s
 
 
 @router.get("/analytics/season")
-async def season(_: Authority, db: Db, ward: str | None = None, category: str | None = None):
+async def season(authority: Authority, db: Db, ward: str | None = None, category: str | None = None):
+    ward = OfficerScope(authority).area or ward  # an officer's analysis is about their own area only
     """Complaints per month and category over the last 12 months (IST)."""
     w, p = scope(ward, category, None, None, dates=False)
     rows = (await db.execute(text(f"""
@@ -167,7 +173,8 @@ async def season(_: Authority, db: Db, ward: str | None = None, category: str | 
 
 
 @router.get("/analytics/today")
-async def today(_: Authority, db: Db, ward: str | None = None, category: str | None = None):
+async def today(authority: Authority, db: Db, ward: str | None = None, category: str | None = None):
+    ward = OfficerScope(authority).area or ward  # an officer's analysis is about their own area only
     """The ward summary card: new today, closed today (officers finished), and complaints now overdue."""
     w, p = scope(ward, category, None, None, dates=False)
     r = (await db.execute(text(f"""
@@ -186,8 +193,9 @@ def _safe(v) -> str:
 
 
 @router.get("/analytics/export.csv")
-async def export_csv(_: Authority, db: Db, ward: str | None = None, category: str | None = None, status: str | None = None, q: str | None = Query(None, max_length=100),
+async def export_csv(authority: Authority, db: Db, ward: str | None = None, category: str | None = None, status: str | None = None, q: str | None = Query(None, max_length=100),
                      open_only: bool = False, response: str | None = Query(None, max_length=12), view: View = "all"):
+    ward = OfficerScope(authority).area or ward
     """The filtered complaint list as CSV (same filters as the list), at most 10,000 rows."""
     where, params = _filters(ward, category, status, q, open_only, response, view)
     rows = (await db.execute(text(f"""

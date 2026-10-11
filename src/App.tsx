@@ -10,6 +10,7 @@ import { FAQS, HOW_STEPS, HOW_TIPS, HOW_UI } from "./i18nStaff";
 import AuthPage from "./AuthPage";
 import AuthorityDashboard from "./AuthorityDashboard";
 import StaffGuide from "./StaffGuide";
+import SiteFooter from "./SiteFooter";
 import AdminPanel from "./AdminPanel";
 
 /** If the control room crashes (for example the API is an older version than this frontend), show why instead of a blank page. */
@@ -42,8 +43,8 @@ const copy = {
     trust: "A simpler way to report civic problems, track progress, and see what’s happening around Mumbai.",
     start: "Start a report",
     explore: "Explore your area",
-    what: "What civic problems can you report?",
-    whatSub: "Choose a category. iREPORT helps with the rest.",
+    what: "Report a problem",
+    whatSub: "Pick what you see. We handle the rest.",
     how: "One clear civic loop",
     howSub: "No department names. No long forms. You stay in control.",
     community: "Civic incidents around you",
@@ -59,8 +60,8 @@ const copy = {
     trust: "नागरिक समस्याओं की शिकायत, प्रगति की जानकारी और मुंबई के आसपास की स्थिति देखने का आसान तरीका।",
     start: "शिकायत शुरू करें",
     explore: "अपना क्षेत्र देखें",
-    what: "आप कौन-सी नागरिक समस्याएँ दर्ज कर सकते हैं?",
-    whatSub: "एक श्रेणी चुनें। बाकी में iREPORT आपकी मदद करेगा।",
+    what: "समस्या दर्ज करें",
+    whatSub: "जो दिखे उसे चुनें। बाकी हम संभालेंगे।",
     how: "एक सरल नागरिक प्रक्रिया",
     howSub: "न विभाग का नाम, न लंबे फॉर्म। नियंत्रण आपके पास है।",
     community: "आपके आसपास नागरिक समस्याएं",
@@ -76,8 +77,8 @@ const copy = {
     trust: "नागरी समस्या नोंदवण्याचा, प्रगती पाहण्याचा आणि मुंबईत काय घडते आहे हे जाणून घेण्याचा सोपा मार्ग.",
     start: "तक्रार सुरू करा",
     explore: "तुमचा परिसर पहा",
-    what: "तुम्ही कोणत्या नागरी समस्या नोंदवू शकता?",
-    whatSub: "श्रेणी निवडा. पुढे iREPORT मदत करेल.",
+    what: "समस्या नोंदवा",
+    whatSub: "जे दिसते ते निवडा. बाकी आम्ही पाहू.",
     how: "एक स्पष्ट नागरी प्रक्रिया",
     howSub: "विभागांची नावे नाहीत. मोठे फॉर्म नाहीत. नियंत्रण तुमच्याकडे.",
     community: "तुमच्या आसपासच्या नागरी समस्या",
@@ -401,6 +402,6 @@ export default function App() {
     {view === "how" && user && user.role !== "citizen" && <StaffGuide lang={lang} role={user.role === "admin" ? "admin" : "authority"} />}
     <MobileNav page={view} go={go} open={openReport} lang={lang} user={user} logout={logout} />
     {flow !== "none" && user && <Suspense fallback={<div className="modal-backdrop"><div className="report-modal loading-modal" role="status">Loading…</div></div>}><ReportFlow key={flowKey} open={flow === "open"} initialCategory={flowCategory} lang={lang} close={() => setFlow("hidden")} discard={() => { setFlow("none"); }} done={() => { setFlow("none"); qc.invalidateQueries({ queryKey: ["reports"] }); qc.invalidateQueries({ queryKey: ["contribution"] }); qc.invalidateQueries({ queryKey: ["community"] }); go("reports"); }} /></Suspense>}
-    <footer><div className="section"><Brand /><p>See it → Select it → Capture it → Locate it → Confirm it → Report it → Track it.</p><small>Independent civic platform for Metropolitan Mumbai · Not an official BMC website</small></div></footer></div>;
+    <SiteFooter go={go} goSection={goSection} role={user?.role ?? null} /></div>;
 }
 

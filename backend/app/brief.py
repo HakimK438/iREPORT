@@ -46,11 +46,12 @@ async def build_brief(db: AsyncSession, incident_id: uuid.UUID, viewer_id: uuid.
         FROM reports r JOIN users u ON u.id = r.user_id
         WHERE r.incident_id = :id AND r.duplicate_of_report_id IS NULL ORDER BY r.created_at"""), {"id": incident_id})).all()
     media = (await db.execute(text("""
-        SELECT m.report_id, m.storage_key, m.thumb_key FROM media m JOIN reports r ON r.id = m.report_id
+        SELECT m.report_id, m.storage_key, m.thumb_key, m.ai_label, m.ai_conf FROM media m JOIN reports r ON r.id = m.report_id
         WHERE r.incident_id = :id AND r.duplicate_of_report_id IS NULL ORDER BY m.created_at"""), {"id": incident_id})).all()
     by_report: dict = {}
     for m in media:
-        by_report.setdefault(m.report_id, []).append({"url": storage.signed_url(m.storage_key), "thumb_url": storage.signed_url(m.thumb_key)})
+        by_report.setdefault(m.report_id, []).append({"url": storage.signed_url(m.storage_key), "thumb_url": storage.signed_url(m.thumb_key),
+                                                   "ai_label": m.ai_label, "ai_conf": m.ai_conf})
     d["evidence"] = [{
         "reporter": r.name, "phone": r.phone if include_phone else None, "at": r.created_at, "problem_type": r.problem_type,
         "description": r.description, "citizen_message": r.citizen_message, "photos": by_report.get(r.id, []),
@@ -76,6 +77,17 @@ async def build_brief(db: AsyncSession, incident_id: uuid.UUID, viewer_id: uuid.
         ORDER BY distance_m"""), {"id": incident_id})).all()
     d["nearby_open"] = {"count": len(nearby), "radius_m": cfg.NEARBY_WORK_RADIUS_M,
                         "items": [{"id": n.id, "public_id": n.public_id, "category": n.category, "status": n.status, "distance_m": round(n.distance_m)} for n in nearby[:5]]}
+
+    # Other problems the same citizen reported together with this one (up to three at one place), and which one was the main problem.
+    main = (await db.execute(text("""
+        SELECT i.public_id, c.name AS category FROM reports r JOIN incidents i ON i.id = r.reported_with JOIN categories c ON c.id = i.category_id
+        WHERE r.incident_id = :id AND r.reported_with IS NOT NULL LIMIT 1"""), {"id": incident_id})).first()
+    root = incident_id if main is None else (await db.scalar(text("SELECT reported_with FROM reports WHERE incident_id = :id AND reported_with IS NOT NULL LIMIT 1"), {"id": incident_id}))
+    others = (await db.execute(text("""
+        SELECT DISTINCT i.public_id, c.name AS category FROM reports r JOIN incidents i ON i.id = r.incident_id JOIN categories c ON c.id = i.category_id
+        WHERE r.reported_with = :root AND i.id <> :id ORDER BY i.public_id"""), {"root": root, "id": incident_id})).all()
+    d["batch"] = {"is_main": main is None and bool(others), "main": {"public_id": main.public_id, "category": main.category} if main else None,
+                  "others": [{"public_id": o.public_id, "category": o.category} for o in others if not (main and o.public_id == main.public_id)]}
 
     d["timeline"] = (await svc.history(db, [incident_id], internal=True))[incident_id]
     d["messages"] = (await svc.thread(db, [incident_id], viewer_id, as_authority=True))[incident_id]

@@ -102,7 +102,7 @@ export interface Contribution { reports_submitted: number; reports_verified: num
 export interface GeoResolve { area: string | null; method: "polygon" | "nearest_area_centre"; departments: Record<string, string | null> }
 export type Source = "map" | "citizen" | "records" | "calendar" | "category";
 export interface Reason { code: string; source: Source; params: { category?: string; name?: string | null; kind?: string; distance_m?: number | null; n?: number } }
-export interface EvidenceEntry { reporter: string; phone: string | null; at: string; problem_type: string | null; description: string | null; citizen_message: string | null; photos: { url: string; thumb_url: string }[] }
+export interface EvidenceEntry { reporter: string; phone: string | null; at: string; problem_type: string | null; description: string | null; citizen_message: string | null; photos: { url: string; thumb_url: string; ai_label?: string | null; ai_conf?: number | null }[] }
 export interface Near { kind: "school" | "hospital"; name: string | null; distance_m: number }
 export interface Brief extends AuthorityRow {
   reasons: Reason[]; map_checked: boolean; duplicate_of: string | null;
@@ -112,6 +112,7 @@ export interface Brief extends AuthorityRow {
   history_here: { count: number; days: number; radius_m: number; since: string | null; items: { public_id: string; status: Status; created_at: string; resolved_at: string | null }[] };
   nearby_open: { count: number; radius_m: number; items: { id: string; public_id: string; category: string; status: Status; distance_m: number }[] };
   timeline: HistoryEvent[]; messages: Msg[];
+  batch: { is_main: boolean; main: { public_id: string; category: string } | null; others: { public_id: string; category: string }[] };
 }
 export type AuthorityDetail = Brief;
 export type ChipId = "all" | "mine" | "review" | "new" | "acknowledged" | "scheduled" | "in_progress" | "resolved" | "closed" | "overdue" | "unassigned";
@@ -122,7 +123,7 @@ export interface AuthorityStats {
 }
 export interface AdminDash {
   as_of: string;
-  summary: { total: number; open: number; resolved: number; critical: number; high: number; moderate: number; routine: number; overdue: number; unassigned: number; awaiting_citizen: number; needs_review: number;
+  summary: { total: number; open: number; resolved: number; critical: number; high: number; moderate: number; routine: number; overdue: number; unassigned: number; waiting: number; awaiting_citizen: number; needs_review: number;
     new_7d: number; prev_7d: number; reports: number; citizens: number; pending_approvals: number; officers: number; resolution_rate: number | null; on_time_pct: number | null; reopen_pct: number | null; median_days: number | null };
   weeks: { week: string; reported: number; closed: number; open_at_end: number }[];
   categories: { category: string; total: number; open: number; high_risk: number }[];
