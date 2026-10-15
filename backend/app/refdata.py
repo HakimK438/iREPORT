@@ -60,17 +60,20 @@ def merged_name(name: str) -> str:
 
 ref = RefData()
 
-# Approximate centre of each seeded neighbourhood. Ward polygons are not loaded (see README.md (Design decisions) #1), so until
-# scripts/load_wards.py is run, an incident's area is the nearest centre to the INCIDENT coordinates.
+# Approximate centre of each seeded neighbourhood. Mumbai areas have ward polygons (migration 0017, official BMC wards), which
+# resolve_ward uses first; these centres are the fallback for points outside every polygon (the Metropolitan Region below, or
+# the sea) and the anchor each area's polygon was cut around. Each Mumbai centre lies inside its ward.
 AREA_CENTRES: dict[str, tuple[float, float]] = {
     "Andheri West": (19.1364, 72.8296), "Bandra": (19.0596, 72.8295), "Colaba": (18.9067, 72.8147), "Fort": (18.9345, 72.8352),
-    "Dadar": (19.0178, 72.8478), "Goregaon": (19.1663, 72.8526), "Malad": (19.1874, 72.8484), "Borivali": (19.2307, 72.8567),
-    "Andheri East": (19.1136, 72.8697), "Versova": (19.1300, 72.8120), "Juhu": (19.1075, 72.8263), "Vile Parle": (19.0996, 72.8446),
-    "Santacruz": (19.0810, 72.8420), "Jogeshwari": (19.1360, 72.8490), "Kandivali": (19.2043, 72.8520), "Dahisar": (19.2500, 72.8590),
+    "Dadar": (19.0230, 72.8400), "Goregaon": (19.1663, 72.8526), "Malad": (19.1874, 72.8484), "Borivali": (19.2307, 72.8567),
+    "Andheri East": (19.1136, 72.8697), "Versova": (19.1310, 72.8230), "Juhu": (19.1075, 72.8263), "Vile Parle": (19.1000, 72.8370),
+    "Santacruz": (19.0810, 72.8420), "Jogeshwari": (19.1350, 72.8390), "Kandivali": (19.2043, 72.8520), "Dahisar": (19.2500, 72.8590),
     "Mahim": (19.0410, 72.8400), "Sion": (19.0390, 72.8619), "Worli": (19.0176, 72.8170), "Lower Parel": (18.9930, 72.8300),
     "Byculla": (18.9780, 72.8333), "Malabar Hill": (18.9548, 72.7985), "Kurla": (19.0726, 72.8826), "Ghatkopar": (19.0860, 72.9081),
-    "Chembur": (19.0522, 72.9005), "Powai": (19.1176, 72.9060), "Vikhroli": (19.1100, 72.9270), "Bhandup": (19.1440, 72.9380),
+    "Chembur": (19.0522, 72.9005), "Powai": (19.1176, 72.9060), "Vikhroli": (19.1150, 72.9250), "Bhandup": (19.1440, 72.9380),
     "Mulund": (19.1726, 72.9425),
+    # Wards that had no area (B, C, F/S, M/E), added by migration 0017.
+    "Dongri": (18.9600, 72.8380), "Kalbadevi": (18.9535, 72.8285), "Parel": (19.0035, 72.8395), "Govandi": (19.0485, 72.9250),
     # Mumbai Metropolitan Region (migration 0007): a pin here must not be filed under the nearest Mumbai area.
     "Kalyan": (19.2437, 73.1355), "Dombivli": (19.2183, 73.0868), "Thane": (19.2183, 72.9781), "Navi Mumbai": (19.0771, 72.9986),
     "Mira Road": (19.2813, 72.8561), "Vasai": (19.3919, 72.8397), "Panvel": (18.9894, 73.1175), "Ulhasnagar": (19.2215, 73.1645),

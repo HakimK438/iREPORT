@@ -1,11 +1,13 @@
+import json
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, File, Form, Query, UploadFile
 from sqlalchemy import text
 
+from .. import accountability as acc
 from .. import incidents as svc
-from .. import paging, workflow
+from .. import paging, ratelimit, workflow
 from ..brief import build_brief
 from ..deps import Authority, Db
 from ..errors import ApiError, not_found
@@ -269,7 +271,20 @@ async def map_view(authority: Authority, db: Db):
     """Map dashboard data for the officer's own area and department: incidents with coordinates, per-area totals and DBSCAN clusters."""
     scope = OfficerScope(authority)
     cats = None if scope.category_ids is None else {c.name for c in ref.categories.values() if c.id in scope.category_ids}
-    return await svc.map_data(db, scope.area, cats)
+    data = await svc.map_data(db, scope.area, cats)
+    data["outline"] = await _area_outline(db, scope.ward_id)
+    return data
+
+
+async def _area_outline(db, ward_id: int | None) -> dict | None:
+    """The border of the officer's BMC ward as GeoJSON, so the map can draw it. It is the official ward outline, not the (straight-edged)
+    share of it that belongs to this area, which is only used to file complaints. Falls back to the area polygon when the area has no
+    ward. None for an officer with no area, or an area without a polygon."""
+    if not ward_id:
+        return None
+    row = (await db.execute(text("""SELECT w.name, w.bmc_ward, ST_AsGeoJSON(coalesce(b.geom, w.geom)::geometry, 5) AS gj
+                                    FROM wards w LEFT JOIN bmc_wards b ON b.code = w.bmc_ward WHERE w.id = :w AND coalesce(b.geom, w.geom) IS NOT NULL"""), {"w": ward_id})).first()
+    return {"area": row.name, "bmc_ward": row.bmc_ward, "geometry": json.loads(row.gj)} if row else None
 
 
 @router.get("/incidents/{incident_id}")
@@ -303,6 +318,23 @@ async def update_incident(incident_id: uuid.UUID, body: AuthorityUpdate, authori
     return result
 
 
+@router.post("/incidents/{incident_id}/proof", status_code=201)
+async def upload_proof(
+    incident_id: uuid.UUID, authority: Authority, db: Db,
+    photo: UploadFile = File(...), lat: float = Form(ge=-90, le=90), lng: float = Form(ge=-180, le=180), accuracy_m: float = Form(ge=0, le=100_000),
+):
+    """The "after" photo an officer takes at the site before marking a complaint Resolved. The phone's position must be within the proof
+    radius of the complaint with a precise fix, and the photo must be fresh and not used before (see accountability.py)."""
+    await _guard(db, OfficerScope(authority), incident_id)
+    cur = await db.scalar(text("SELECT status::text FROM incidents WHERE id = :i"), {"i": incident_id})
+    if "Resolved" not in workflow.ALLOWED.get(cur, set()):
+        raise ApiError(409, "invalid_transition", f"A complaint that is {cur} cannot be marked resolved, so it needs no proof photo.")
+    ratelimit.check_window("proofs", str(authority.id), 30, 3600, "Too many proof photos. Please try again later.")
+    result = await acc.save_proof(db, authority.id, incident_id, photo, lat, lng, accuracy_m)
+    await db.commit()
+    return result
+
+
 @router.post("/incidents/bulk")
 async def bulk_update(body: BulkUpdate, authority: Authority, db: Db):
     """Acknowledge, assign, schedule and message many complaints. Resolving is never bulk: each fix needs its own note."""
@@ -327,8 +359,12 @@ async def review_report(incident_id: uuid.UUID, body: ReviewDecision, authority:
     cur = await db.scalar(text("SELECT status::text FROM incidents WHERE id = :i FOR UPDATE"), {"i": incident_id})
     note = (body.note or "").strip()
     if body.decision == "fake":
-        await workflow.apply_officer_update(db, authority.id, incident_id, AuthorityUpdate(status="Rejected", reason=f"Fake or irrelevant report. {note}".strip()))
+        await workflow.apply_officer_update(db, authority.id, incident_id, AuthorityUpdate(status="Rejected", reason=f"{workflow.FAKE_REASON} {note}".strip()))
         await db.execute(text("UPDATE incidents SET needs_review = false WHERE id = :i"), {"i": incident_id})
+        # A fake decision is a strike against the citizen who filed it: repeat offenders go to review, then are paused (accountability.py).
+        reporter = await db.scalar(text("SELECT user_id FROM reports WHERE incident_id = :i AND duplicate_of_report_id IS NULL ORDER BY created_at LIMIT 1"), {"i": incident_id})
+        if reporter:
+            await acc.add_strike(db, reporter, incident_id, authority.id, note or None)
     else:
         await db.execute(text("UPDATE incidents SET needs_review = false, updated_at = now() WHERE id = :i"), {"i": incident_id})
         await workflow._event(db, incident_id, cur, cur, authority.id, f"Reviewed: the report is genuine. {note}".strip())

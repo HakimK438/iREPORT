@@ -155,6 +155,9 @@ class Media(Base):
     ai_label: Mapped[str | None] = mapped_column(Text)   # what the image model saw (see ai/pipeline.photo_conflict)
     ai_conf: Mapped[float | None] = mapped_column(Float)
     incident_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("incidents.id"))
+    dhash: Mapped[int | None] = mapped_column(BigInteger)  # perceptual hash (64-bit dHash), see images.dhash
+    gps_lat: Mapped[float | None] = mapped_column(Float)   # the photo's own GPS point, read from EXIF before the metadata is stripped
+    gps_lng: Mapped[float | None] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

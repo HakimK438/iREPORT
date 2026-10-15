@@ -59,7 +59,8 @@ async def analyze(
         key, thumb_key = new_keys()
         await storage.put(key, p.main, "image/webp")
         await storage.put(thumb_key, p.thumb, "image/webp")
-        m = Media(uploader_id=citizen.id, storage_key=key, thumb_key=thumb_key, width=p.width, height=p.height, bytes=len(p.main))
+        m = Media(uploader_id=citizen.id, storage_key=key, thumb_key=thumb_key, width=p.width, height=p.height, bytes=len(p.main),
+                  dhash=p.dhash, gps_lat=p.gps[0] if p.gps else None, gps_lng=p.gps[1] if p.gps else None)
         db.add(m)
         await db.flush()
         media_ids.append(m.id)

@@ -2,6 +2,7 @@ import { useState, type ChangeEvent, type FormEvent } from "react";
 import { Icon } from "./Icon";
 import { AREAS, DEPARTMENTS, type Role } from "./store";
 import { api, ApiError, type Session } from "./api";
+import { demoLogin, demoWards } from "./demoLogins";
 
 const roleInfo: Record<Role, { label: string; blurb: string }> = {
   citizen: { label: "Citizen", blurb: "Report problems and track every update." },
@@ -21,7 +22,14 @@ export default function AuthPage({ onLogin, bmcImage }: { onLogin: (s: Session) 
   const [busy, setBusy] = useState(false);
 
   const set = (key: keyof typeof form) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => setForm(f => ({ ...f, [key]: e.target.value }));
-  const pickRole = (r: Role) => { setRole(r); if (r === "admin") setMode("login"); setError(""); setNotice(""); };
+  const pickRole = (r: Role) => { setRole(r); if (r === "admin") setMode("login"); setError(""); setNotice(""); setDemoWard(""); };
+  // Development: choosing a ward fills in that ward authority's login.
+  const [demoWard, setDemoWard] = useState("");
+  const pickDemoWard = (ward: string) => {
+    setDemoWard(ward); setError("");
+    const d = demoLogin(ward);
+    if (d) setForm(f => ({ ...f, email: d.email, password: d.password }));
+  };
   const pickMode = (m: "login" | "register") => { setMode(m); setError(""); setNotice(""); };
 
   const submit = async (e: FormEvent) => {
@@ -70,6 +78,9 @@ export default function AuthPage({ onLogin, bmcImage }: { onLogin: (s: Session) 
       <p className="role-blurb">{roleInfo[role].blurb}</p>
       {role !== "admin" && <div className="mode-switch"><button className={!isRegister ? "active" : ""} onClick={() => pickMode("login")}>Log in</button><button className={isRegister ? "active" : ""} onClick={() => pickMode("register")}>Register</button></div>}
       <form onSubmit={submit} noValidate>
+        {role === "authority" && !isRegister && demoWards().length > 0 && <label className="field ward-pick"><span>Ward</span>
+          <select value={demoWard} onChange={e => pickDemoWard(e.target.value)} aria-label="Choose your ward to fill in its login">
+            <option value="">Choose a ward to fill in its login</option>{demoWards().map(w => <option key={w} value={w}>{w} Authority</option>)}</select></label>}
         {isRegister && <label className="field"><span>Full name</span><input value={form.name} onChange={set("name")} autoComplete="name" maxLength={100} /></label>}
         <label className="field"><span>{role === "authority" ? "Official email" : "Email"}</span><input type="email" value={form.email} onChange={set("email")} autoComplete="email" /></label>
         {isRegister && <label className="field"><span>Phone (optional)</span><input type="tel" value={form.phone} onChange={set("phone")} autoComplete="tel" maxLength={20} /></label>}
@@ -87,7 +98,6 @@ export default function AuthPage({ onLogin, bmcImage }: { onLogin: (s: Session) 
         <button className="primary full large" type="submit" disabled={busy}>{busy ? "Please wait…" : isRegister ? (role === "authority" ? "Request authority access" : "Create account") : "Log in"} <Icon name="arrow" /></button>
       </form>
       {role === "authority" && isRegister && <p className="auth-note">Authority accounts are reviewed by an admin before access is given.</p>}
-      {import.meta.env.DEV && <div className="demo-box"><b>Demo accounts</b><span>Citizen: aarav@example.com / citizen123</span><span>Authority: officer@bmc.demo / bmc12345</span><span>Admin: ADMIN_EMAIL / ADMIN_PASSWORD from your .env</span><small>Development only. Create them with: python -m scripts.seed_demo</small></div>}
     </section>
   </main>;
 }

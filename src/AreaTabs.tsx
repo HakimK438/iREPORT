@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, type Session } from "./api";
 import { Icon } from "./Icon";
 import { wardOfArea } from "./wards";
+import { demoLogin } from "./demoLogins";
 
 const BASE = import.meta.env.BASE_URL;
 const slug = (a: string) => a.toLowerCase().replace(/\s+/g, "-");
@@ -14,10 +15,6 @@ function WardCard({ area }: { area: string }) {
   return <div className="ward-card"><img src={`${BASE}areas/${slug(area)}.png`} alt="" onError={e => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
     <div><b>BMC {w.ward} Ward Office</b><small>{w.address}</small><small>Tel. {w.phone}</small></div></div>;
 }
-
-// Development only (the demo accounts from scripts/seed_area_problems.py). In a production build the box stays empty.
-const DEMO_PASSWORD = "ward12345";
-const emailFor = (area: string) => `ward.${area.toLowerCase().replace(/\s+/g, "")}@bmc.demo`;
 
 /** One tab per area authority ("Dadar Authority"). Your own area is the active tab. Opening another area means signing in as
     that area's authority: officers never see or change another area's complaints without their own login. */
@@ -32,7 +29,8 @@ export default function AreaTabs({ onSwitch }: { onSwitch: (s: Session) => void 
 
   const pick = (area: string, mine: boolean) => {
     if (mine) { setTarget(null); return; }
-    setTarget(area); setEmail(emailFor(area)); setPassword(import.meta.env.DEV ? DEMO_PASSWORD : ""); setError(""); // development: pre-filled so one click signs in
+    const demo = demoLogin(area); // development only: the ward's seeded login is filled in; in production the fields start empty
+    setTarget(area); setEmail(demo?.email ?? ""); setPassword(demo?.password ?? ""); setError("");
   };
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -59,10 +57,9 @@ export default function AreaTabs({ onSwitch }: { onSwitch: (s: Session) => void 
       <WardCard area={target} />
       <p><b>{target} Authority</b>: sign in with this authority's login to see and manage {target}'s complaints.</p>
       <label className="fld"><span>Email</span><input type="email" value={email} onChange={e => setEmail(e.target.value)} autoComplete="username" required /></label>
-      <label className="fld"><span>Password</span><input type={import.meta.env.DEV ? "text" : "password"} value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" required /></label>
+      <label className="fld"><span>Password</span><input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" required /></label>
       {error && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {error}</div>}
       <div className="act-row"><button className="primary compact" disabled={busy || !password}>{busy ? "Signing in…" : "Sign in"}</button><button type="button" className="secondary compact" onClick={() => setTarget(null)}>Cancel</button></div>
-      {import.meta.env.DEV && <small className="muted-line">Development only: the demo login is filled in for you. Just click Sign in.</small>}
     </form>}
   </section>;
 }

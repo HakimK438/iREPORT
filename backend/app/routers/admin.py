@@ -2,9 +2,10 @@ import uuid
 from datetime import UTC, datetime
 from typing import Literal
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from sqlalchemy import select, text, update
 
+from .. import accountability as acc
 from ..deps import Admin, Db
 from ..errors import ApiError, not_found
 from ..models import AuthorityProfile, RefreshToken, User
@@ -104,6 +105,13 @@ async def incident_detail(incident_id: uuid.UUID, admin: Admin, db: Db):
     from .authority import build_detail
 
     return await build_detail(db, incident_id, admin.id)
+
+
+@router.get("/audit")
+async def audit(_: Admin, db: Db, days: int = Query(90, ge=1, le=365)):
+    """Officer accountability: site-photo proof, citizen confirmation, reopens, holds and rejections per officer, the latest suspicious
+    resolutions, and how many citizens have fake-report strikes. See accountability.py."""
+    return await acc.audit_report(db, days)
 
 
 @router.get("/performance")

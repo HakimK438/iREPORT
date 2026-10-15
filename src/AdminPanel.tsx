@@ -4,6 +4,7 @@ import { ago } from "./store";
 import { api, type AdminAuthority } from "./api";
 import MapDashboard from "./MapDashboard";
 import AdminPerformance from "./AdminPerformance";
+import AdminAudit from "./AdminAudit";
 import { tr, type Lang } from "./i18n";
 import { deptLabel } from "./i18nStaff";
 
@@ -27,6 +28,7 @@ export default function AdminPanel({ lang = "en" }: { lang?: Lang }) {
     <div className="page-heading"><div><span className="eyebrow">{tr(lang, "adm_eyebrow")}</span><h1>{tr(lang, "adm_title")}</h1><p>{tr(lang, "adm_sub")}</p></div></div>
     <section className="admin-card"><MapDashboard mode="admin" lang={lang} /></section>
     <AdminPerformance lang={lang} />
+    <AdminAudit />
     {decide.isError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {(decide.error as Error).message}</div>}
     <section className="admin-card"><h2>{tr(lang, "adm_waiting")}</h2>
       {list(pending, tr(lang, "a_noPending"), u => <><button className="primary compact" disabled={busy(u.id)} onClick={() => decide.mutate({ id: u.id, decision: "approve" })}><Icon name="check" size={16} /> {tr(lang, "adm_approve")}</button><button className="secondary compact" disabled={busy(u.id)} onClick={() => decide.mutate({ id: u.id, decision: "reject" })}>{tr(lang, "adm_reject")}</button></>)}

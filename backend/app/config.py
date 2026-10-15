@@ -59,6 +59,22 @@ class Settings(BaseSettings):
     merge_radius_m: float = 50
     merge_max_age_days: int = 14
 
+    # Accountability (migration 0018). Proof of work: an officer cannot mark a complaint Resolved without a fresh photo taken at the site.
+    require_resolution_proof: bool = True  # set false only for demos / development
+    proof_radius_m: float = 150            # the phone must be this close to the complaint when the proof photo is taken
+    proof_max_accuracy_m: float = 100      # a GPS fix less precise than this is refused ("move to open sky")
+    proof_max_age_hours: int = 6           # a proof photo is valid for the next Resolved action only within this time
+    proof_photo_max_age_hours: int = 24    # a photo whose own EXIF time is older than this is refused (an old photo reused)
+    min_work_minutes: int = 20             # Resolved sooner than this after the last officer action is flagged "too_fast" for the admin
+    # Abuse checks on citizen reports.
+    photo_reuse_block: bool = True         # the same photo (perceptual hash) cannot back two different reports
+    photo_reuse_days: int = 90
+    photo_gps_max_gap_m: float = 1500      # a photo whose own GPS is further than this from the pinned spot sends the report to review
+    rate_reports_per_day: int = 25         # new reports per citizen per 24 hours (on top of the hourly limit)
+    strike_window_days: int = 30
+    strike_review_at: int = 3              # this many fake-report decisions: every new report of that citizen goes to review
+    strike_block_at: int = 5               # this many: the citizen cannot report until the oldest strike leaves the window
+
     # Retention and jobs
     enable_scheduler: bool = True
     draft_ttl_minutes: int = 60

@@ -51,7 +51,7 @@ function CategoryThumb({ name, icon }: { name: string; icon: IconName }) {
   return <span className={file && ok ? "cat-thumb" : "cat-thumb cat-icon"}>{file && ok ? <img src={`${import.meta.env.BASE_URL}categories/${file}`} alt="" loading="lazy" width={120} height={72} onError={() => setOk(false)} /> : <Icon name={icon} size={27} />}</span>;
 }
 
-export default function ReportFlow({ open, close, discard, done, lang, initialCategory }: { open: boolean; close: () => void; discard: () => void; done: (created: ReportCreated) => void; lang: Lang; initialCategory?: string }) {
+export default function ReportFlow({ open, close, discard, done, lang, initialCategory }: { open: boolean; close: () => void; discard: () => void; done: (created: ReportCreated, spot: { lat: number; lng: number } | null) => void; lang: Lang; initialCategory?: string }) {
   const [step, setStep] = useState(initialCategory ? 2 : 1);
   /* Several problems can be reported at once: the first is the main one, each extra becomes its own report (own team, own priority). */
   const [selected, setSelected] = useState<string[]>(initialCategory ? [initialCategory] : []), [answersBy, setAnswersBy] = useState<Record<string, Answers>>({});
@@ -517,7 +517,8 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
         {created.map(c => <div className="report-id" key={c.report_id}><small>{tr(lang, "reportId").toUpperCase()}</small><b>{c.incident_public_id}</b><span>{c.status}</span><p>{c.merged ? `${tr(lang, "merged")} ${c.affected_count}` : ""}{c.area ? ` ${c.area}` : ""}{c.department ? ` · ${c.department}` : ""}</p></div>)}
         {submitError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {submitError}</div>}
         <p>{tr(lang, "trackIt")}</p>
-        <button className="primary full" onClick={() => done(created[0])}>{tr(lang, "trackBtn")} <Icon name="arrow" /></button></div>}
+        <button className="primary full" onClick={() => done(created[0], spot ? { lat: spot.lat, lng: spot.lng } : null)}>{tr(lang, "seeNearby")} <Icon name="arrow" /></button>
+        <button className="text-button" onClick={() => done(created[0], null)}>{tr(lang, "trackBtn")}</button></div>}
 
       {step < 5 && (shots.length > 0 || description || spot || selected.length > 0) && <button className="text-button discard" onClick={discard}>{tr(lang, "startOver")}</button>}
     </div></div></div>;

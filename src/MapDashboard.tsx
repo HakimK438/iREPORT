@@ -69,7 +69,7 @@ export default function MapDashboard({ mode, lang = "en" }: { mode: "authority" 
 
 
     <Suspense fallback={<div className="pm-map skeleton-block" role="status">{tr(lang, "m_mapLoading")}</div>}>
-      <ProblemMap lang={lang} incidents={visible} clusters={clusters} areas={data?.areas ?? []} selectedId={selectedId} onSelect={setSelectedId} fitKey={`${area}|${category}|${data ? "ready" : "wait"}`} showClusters={showClusters} />
+      <ProblemMap lang={lang} incidents={visible} clusters={clusters} areas={data?.areas ?? []} selectedId={selectedId} onSelect={setSelectedId} fitKey={`${area}|${category}|${data ? "ready" : "wait"}`} showClusters={showClusters} outline={data?.outline ?? null} />
     </Suspense>
 
     {data && showClusters && <div className="md-ml"><span>{trf(lang, "m_clusterNote", { n: data.method.min_points, m: data.method.eps_m })} {clusters.length === 0 ? tr(lang, "m_noClusters") : `${clusters.length} ${tr(lang, "m_clustersFound")}`}</span></div>}

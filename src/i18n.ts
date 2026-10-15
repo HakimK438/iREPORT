@@ -117,6 +117,13 @@ export const STR = {
   reportId: T("Report ID", "शिकायत आईडी", "तक्रार आयडी"),
   trackIt: T("Track it from your dashboard", "अपने डैशबोर्ड से ट्रैक करें", "तुमच्या डॅशबोर्डवरून मागोवा घ्या"),
   trackBtn: T("Track my report", "मेरी शिकायत ट्रैक करें", "माझ्या तक्राराचा मागोवा घ्या"),
+  seeNearby: T("See others near you and upvote", "आसपास की शिकायतें देखें और समर्थन करें", "जवळच्या तक्रारी पहा आणि समर्थन द्या"),
+  cmAfterTitle: T("Your report is with the {area} ward office", "आपकी शिकायत {area} वार्ड कार्यालय के पास है", "तुमची तक्रार {area} वॉर्ड कार्यालयाकडे आहे"),
+  cmAfterHelp: T("Other problems reported near you are below. Upvote the ones you have also seen: every upvote raises that problem's priority for the ward authority.", "आपके पास दर्ज की गई अन्य समस्याएँ नीचे हैं। जो आपने भी देखी हों उन्हें समर्थन दें: हर समर्थन वार्ड अधिकारी के लिए उसकी प्राथमिकता बढ़ाता है।", "तुमच्या जवळ नोंदवलेल्या इतर समस्या खाली आहेत. तुम्ही पाहिलेल्या समस्यांना समर्थन द्या: प्रत्येक समर्थन वॉर्ड अधिकाऱ्यासाठी तिचे प्राधान्य वाढवते."),
+  cmYourReport: T("Your report", "आपकी शिकायत", "तुमची तक्रार"),
+  cmReportedBy: T("Reported by", "द्वारा दर्ज", "यांनी नोंदवले"),
+  cmUpvote: T("Upvote", "समर्थन करें", "समर्थन द्या"),
+  cmUpvoted: T("Upvoted", "समर्थन किया", "समर्थन दिले"),
   merged: T("Added to an existing report nearby.", "पास की मौजूदा शिकायत में जोड़ी गई।", "जवळच्या अस्तित्वातील तक्रारीत जोडली."),
   // home
   homeWhat: T("What civic problems can you report?", "आप कौन-सी नागरिक समस्याएँ दर्ज कर सकते हैं?", "तुम्ही कोणत्या नागरी समस्या नोंदवू शकता?"),

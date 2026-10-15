@@ -28,9 +28,10 @@ export const WARD_OFFICES: Record<string, WardOffice> = {
   "T": { ward: "T", address: "1st floor, Lala Devidayal Road, Mulund (W), Mumbai 400080", phone: "022 2564 5289" },
 };
 
-/** Area (as used in iREPORT) to BMC ward. Some areas straddle two wards; the main one is used. */
+/** Area (as used in iREPORT) to BMC ward. The server cuts each ward's official boundary between its areas (migration 0017), so an
+    area never crosses a ward border. Dongri, Kalbadevi, Parel and Govandi stand for wards B, C, F/S and M/E. */
 export const AREA_WARD: Record<string, string> = {
-  "Fort": "A", "Colaba": "A", "Byculla": "E", "Malabar Hill": "D", "Lower Parel": "G/S", "Worli": "G/S", "Dadar": "G/N", "Mahim": "G/N", "Sion": "F/N",
+  "Fort": "A", "Colaba": "A", "Dongri": "B", "Kalbadevi": "C", "Parel": "F/S", "Govandi": "M/E", "Byculla": "E", "Malabar Hill": "D", "Lower Parel": "G/S", "Worli": "G/S", "Dadar": "G/N", "Mahim": "G/N", "Sion": "F/N",
   "Bandra": "H/W", "Santacruz": "H/E", "Vile Parle": "K/W", "Juhu": "K/W", "Versova": "K/W", "Andheri West": "K/W", "Jogeshwari": "K/W", "Andheri East": "K/E",
   "Goregaon": "P/S", "Malad": "P/N", "Kandivali": "R/S", "Borivali": "R/C", "Dahisar": "R/N", "Kurla": "L", "Chembur": "M/W", "Ghatkopar": "N",
   "Powai": "S", "Vikhroli": "S", "Bhandup": "S", "Mulund": "T",

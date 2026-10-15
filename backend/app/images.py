@@ -4,6 +4,7 @@ metadata and re-encodes to WebP. The original upload is never stored."""
 
 import io
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 import numpy as np
 from PIL import Image, ImageOps, UnidentifiedImageError
@@ -21,6 +22,8 @@ except ImportError:  # pragma: no cover - optional at runtime
 
 MAX_STORED_BYTES = 500 * 1024
 GPS_IFD = 0x8825
+EXIF_IFD, TAG_DATETIME_ORIGINAL, TAG_DATETIME = 0x8769, 36867, 306
+IST = timezone(timedelta(hours=5, minutes=30))  # a phone writes local time without a zone; this app is only used in Mumbai
 
 
 def sniff(data: bytes) -> str | None:
@@ -44,6 +47,8 @@ class Processed:
     gps: tuple[float, float] | None
     image: Image.Image  # decoded, oriented RGB copy for the classifier (kept in memory only)
     quality: dict | None = None  # deterministic checks, see photo_quality()
+    dhash: int = 0  # 64-bit perceptual hash (signed, fits a bigint); 0 for a flat image, which carries no signal
+    taken_at: datetime | None = None  # the camera's own capture time from EXIF, when the photo has one
 
 
 def _ratio(v) -> float:
@@ -73,6 +78,32 @@ def read_gps(img: Image.Image) -> tuple[float, float] | None:
         return round(lat, 6), round(lng, 6)
     except Exception:  # noqa: BLE001 - broken EXIF must never fail an upload
         return None
+
+
+def read_taken_at(img: Image.Image) -> datetime | None:
+    """When the camera says the photo was taken (EXIF DateTimeOriginal) as an aware datetime, or None. Never raises."""
+    try:
+        exif = img.getexif()
+        raw = exif.get_ifd(EXIF_IFD).get(TAG_DATETIME_ORIGINAL) or exif.get(TAG_DATETIME)
+        return datetime.strptime(str(raw).strip(), "%Y:%m:%d %H:%M:%S").replace(tzinfo=IST) if raw else None
+    except Exception:  # noqa: BLE001 - broken EXIF must never fail an upload
+        return None
+
+
+def dhash(img: Image.Image) -> int:
+    """Difference hash: shrink to 9x8 grey, one bit per "is this pixel brighter than its left neighbour" (64 bits). The same photo
+    re-saved, resized or recompressed stays within a few bits of itself; two different scenes differ in about half of them.
+    Returned signed so it fits a Postgres bigint. A flat image hashes to 0."""
+    px = np.asarray(img.convert("L").resize((9, 8), Image.Resampling.LANCZOS), dtype=np.int16)
+    value = 0
+    for bit in (px[:, 1:] > px[:, :-1]).flatten():
+        value = (value << 1) | int(bit)
+    return value - (1 << 64) if value >= (1 << 63) else value
+
+
+def hamming(a: int, b: int) -> int:
+    """Number of differing bits between two signed 64-bit hashes."""
+    return bin((a ^ b) & ((1 << 64) - 1)).count("1")
 
 
 def _webp(img: Image.Image, quality: int) -> bytes:
@@ -114,6 +145,7 @@ def process(data: bytes) -> Processed:
         if img.width * img.height > s.max_pixels:
             raise ApiError(413, "too_many_pixels", "This photo is too large. Please use a smaller photo.")
         gps = read_gps(img)
+        taken_at = read_taken_at(img)
         if kind == "jpeg":
             img.draft("RGB", (s.main_max_side, s.main_max_side))  # fast DCT downscale while decoding
         img = ImageOps.exif_transpose(img)
@@ -140,4 +172,4 @@ def process(data: bytes) -> Processed:
     thumb = main.copy()
     thumb.thumbnail((s.thumb_max_side, s.thumb_max_side), Image.Resampling.LANCZOS)
     thumb_bytes = _webp(thumb, 70)
-    return Processed(main_bytes, thumb_bytes, main.width, main.height, gps, main, photo_q)
+    return Processed(main_bytes, thumb_bytes, main.width, main.height, gps, main, photo_q, dhash(main), taken_at)

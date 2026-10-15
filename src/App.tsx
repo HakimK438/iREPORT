@@ -11,6 +11,7 @@ import AuthPage from "./AuthPage";
 import AuthorityDashboard from "./AuthorityDashboard";
 import StaffGuide from "./StaffGuide";
 import SiteFooter from "./SiteFooter";
+import ProofCard from "./ProofCard";
 import AdminPanel from "./AdminPanel";
 
 /** If the control room crashes (for example the API is an older version than this frontend), show why instead of a blank page. */
@@ -174,10 +175,15 @@ function Home({ open, go, lang }: { open: (category?: string) => void; go: (p: P
 }
 
 /** A real incident from the community feed. */
-function IncidentCard({ title, area, type, affected, image, severity, status, confirmed = false, busy = false, onConfirm, sample = null, lang = "en" }: { title: string; area: string; type: string; affected: number; image: string | null; severity: string; status: string; confirmed?: boolean; busy?: boolean; onConfirm?: () => void; sample?: number | null; lang?: Lang }) {
+function IncidentCard({ title, area, type, affected, image, severity, status, confirmed = false, busy = false, onConfirm, sample = null, lang = "en", reportedBy = null, mine = false, highlight = false }: { title: string; area: string; type: string; affected: number; image: string | null; severity: string; status: string; confirmed?: boolean; busy?: boolean; onConfirm?: () => void; sample?: number | null; lang?: Lang; reportedBy?: string | null; mine?: boolean; highlight?: boolean }) {
   const share = () => { const text = `${title} · ${area}`; if (navigator.share) navigator.share({ title: "iREPORT", text }).catch(() => {}); else navigator.clipboard?.writeText(text).catch(() => {}); };
-  return <article className="incident-card">{image ? <img src={image} alt="Civic incident evidence" loading="lazy" /> : <div className="no-photo"><Icon name="camera" size={26} /><small>No photo</small></div>}<div className="incident-body">{sample != null && <span className="sample-badge" title={tr(lang, "exampleBadge")}>{tr(lang, "exampleBadge")} · {tr(lang, "exampleConf")} {Math.round(sample * 100)}%</span>}<div className="incident-top"><span>{type}</span><b>{severity}</b></div><h3>{title}</h3><p><Icon name="pin" size={16} /> {area}</p><div className="signal"><strong>{affected}</strong><span>citizens affected</span><b>{status}</b></div><div className="incident-actions"><button className={confirmed ? "confirmed" : ""} disabled={busy} onClick={onConfirm}><Icon name={confirmed ? "check" : "heart"} /> {confirmed ? "Confirmed" : "Like / Confirm"}</button><button onClick={share}><Icon name="share" /> Share</button></div></div></article>;
+  return <article className={`incident-card${highlight ? " just-reported" : ""}`}>{image ? <img src={image} alt="Civic incident evidence" loading="lazy" /> : <div className="no-photo"><Icon name="camera" size={26} /><small>No photo</small></div>}<div className="incident-body">{sample != null && <span className="sample-badge" title={tr(lang, "exampleBadge")}>{tr(lang, "exampleBadge")} · {tr(lang, "exampleConf")} {Math.round(sample * 100)}%</span>}<div className="incident-top"><span>{type}</span><b>{severity}</b></div><h3>{title}</h3><p><Icon name="pin" size={16} /> {area}</p>
+    {(reportedBy || mine) && <p className="reporter-line"><Icon name="profile" size={16} /> {mine ? <b>{tr(lang, "cmYourReport")}</b> : <>{tr(lang, "cmReportedBy")} <b>{reportedBy}</b></>}{!mine && affected > 1 ? ` +${affected - 1}` : ""}</p>}
+    <div className="signal"><strong>{affected}</strong><span>citizens affected</span><b>{status}</b></div><div className="incident-actions"><button className={confirmed ? "confirmed" : ""} disabled={busy || mine} onClick={onConfirm}><Icon name={confirmed ? "check" : "heart"} /> {mine ? tr(lang, "cmYourReport") : confirmed ? tr(lang, "cmUpvoted") : tr(lang, "cmUpvote")}</button><button onClick={share}><Icon name="share" /> Share</button></div></div></article>;
 }
+
+/** Where the citizen just filed a report: the Community page opens around that place and says what upvoting does. */
+interface JustReported { lat: number; lng: number; incidentId: string; publicId: string; area: string | null }
 
 const COMMUNITY_FILTERS: Record<string, { category?: string; status?: string; radius: number }> = {
   Nearby: { radius: 2000 }, All: { radius: 50000 }, Potholes: { category: "Pothole", radius: 25000 },
@@ -187,10 +193,10 @@ const COMMUNITY_FILTERS: Record<string, { category?: string; status?: string; ra
 };
 const COMMUNITY_SORT: Record<string, string> = { Nearest: "nearest", Recent: "recent", "Most affected": "affected", "High severity": "severity" };
 
-function Community({ lang, user, go, defaultArea }: { lang: Lang; user: User | null; go: (p: Page) => void; defaultArea: string }) {
+function Community({ lang, user, go, defaultArea, justReported }: { lang: Lang; user: User | null; go: (p: Page) => void; defaultArea: string; justReported: JustReported | null }) {
   const t = copy[lang]; const qc = useQueryClient();
-  const [area, setArea] = useState(defaultArea); const [filter, setFilter] = useState("Nearby"); const [sort, setSort] = useState("Nearest");
-  const [here, setHere] = useState<{ lat: number; lng: number } | null>(null); const [locNote, setLocNote] = useState("");
+  const [area, setArea] = useState(justReported?.area ?? defaultArea); const [filter, setFilter] = useState("Nearby"); const [sort, setSort] = useState(justReported ? "Recent" : "Nearest");
+  const [here, setHere] = useState<{ lat: number; lng: number } | null>(justReported ? { lat: justReported.lat, lng: justReported.lng } : null); const [locNote, setLocNote] = useState("");
   const centre = here ?? AREA_CENTRES[area] ?? null;
   const f = COMMUNITY_FILTERS[filter];
   const key = ["community", centre?.lat, centre?.lng, filter, sort, user?.id ?? "guest"];
@@ -220,13 +226,14 @@ function Community({ lang, user, go, defaultArea }: { lang: Lang; user: User | n
   const onConfirm = (i: IncidentPublic) => { if (!user) { go("auth"); return; } if (user.role !== "citizen" || i.reported_by_me) return; confirm.mutate(i); };
   const where = here ? "your location" : area;
   return <main className="page section"><div className="page-heading"><div><span className="eyebrow">COMMUNITY</span><h1>{t.community}</h1><p>Location → incident → evidence → community signal → authority action.</p></div></div>
+    {justReported && <div className="after-report" role="status"><Icon name="check" size={20} /><div><b>{trf(lang, "cmAfterTitle", { area: justReported.area ?? "Mumbai" })} · {justReported.publicId}</b><small>{tr(lang, "cmAfterHelp")}</small></div></div>}
     <div className="area-bar"><div><small>{t.area}</small><label><Icon name="search" /><input aria-label="Search area" list="area-list" value={here ? "Your location" : area} onChange={e => pickArea(AREAS.find(a => a.toLowerCase() === e.target.value.trim().toLowerCase()) ?? e.target.value)} /><datalist id="area-list">{AREAS.map(a => <option key={a} value={a} />)}</datalist></label></div><button className="secondary" onClick={locate}><Icon name="pin" /> Use my location</button><select value={AREAS.includes(area) ? area : ""} onChange={e => pickArea(e.target.value)}>{!AREAS.includes(area) && <option value="">Choose an area</option>}{AREAS.map(a => <option key={a}>{a}</option>)}</select></div>
     {locNote && <p className="muted-line">{locNote}</p>}
     <div className="filter-row"><div>{Object.keys(COMMUNITY_FILTERS).map(x => <button key={x} className={filter === x ? "active" : ""} onClick={() => setFilter(x)}>{x}</button>)}</div><select aria-label="Sort incidents" value={sort} onChange={e => setSort(e.target.value)}>{Object.keys(COMMUNITY_SORT).map(s => <option key={s}>{s}</option>)}</select></div>
     {!centre && <div className="empty-note"><Icon name="search" /><span><b>{tr(lang, "cmChoose")}</b><small>{tr(lang, "cmChooseHelp")}</small></span></div>}
     {feed.isPending && centre && <div className="incident-grid">{[0, 1, 2].map(k => <div key={k} className="incident-card skeleton-card"><div className="skeleton-block tall" /><div className="incident-body"><div className="skeleton-line w50" /><div className="skeleton-line w90" /><div className="skeleton-line w60" /></div></div>)}</div>}
     {feed.isError && <div className="empty-note error"><Icon name="alert" /><span><b>{tr(lang, "cmLoadError")}</b><small>{(feed.error as Error).message}</small></span><button className="secondary compact" onClick={() => feed.refetch()}>{tr(lang, "rpRetry")}</button></div>}
-    {items.length > 0 && <div className="incident-grid">{items.map(i => <IncidentCard key={i.id} title={i.title} area={[i.area ?? "Mumbai", distanceLabel(i.distance_m)].filter(Boolean).join(" · ")} type={i.category.toUpperCase()} affected={i.affected_count} image={i.thumb_url} severity={`${severityName(lang, i.severity).toUpperCase()} ${tr(lang, "rpSeverity").toUpperCase()}`} status={statusName(lang, i.status)} confirmed={!!i.confirmed_by_me || !!i.reported_by_me} busy={confirm.isPending && confirm.variables?.id === i.id} onConfirm={() => onConfirm(i)} sample={i.sample_confidence ?? null} lang={lang} />)}</div>}
+    {items.length > 0 && <div className="incident-grid">{items.map(i => <IncidentCard key={i.id} title={i.title} area={[i.area ?? "Mumbai", distanceLabel(i.distance_m)].filter(Boolean).join(" · ")} type={i.category.toUpperCase()} affected={i.affected_count} image={i.thumb_url} severity={`${severityName(lang, i.severity).toUpperCase()} ${tr(lang, "rpSeverity").toUpperCase()}`} status={statusName(lang, i.status)} confirmed={!!i.confirmed_by_me || !!i.reported_by_me} busy={confirm.isPending && confirm.variables?.id === i.id} onConfirm={() => onConfirm(i)} sample={i.sample_confidence ?? null} lang={lang} reportedBy={i.reported_by ?? null} mine={!!i.reported_by_me} highlight={i.id === justReported?.incidentId} />)}</div>}
     {feed.hasNextPage && <button className="secondary load-more" onClick={() => feed.fetchNextPage()} disabled={feed.isFetchingNextPage}>{feed.isFetchingNextPage ? tr(lang, "rpLoading") : tr(lang, "cmMore")}</button>}
     {confirm.isError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {(confirm.error as Error).message}</div>}
     {items.some(i => i.sample_confidence != null) && <p className="muted-line sample-note">{tr(lang, "ad_samples")}</p>}
@@ -259,6 +266,7 @@ function ResolutionBox({ r, lang }: { r: MyReport; lang: Lang }) {
   const when = r.closes_at ? new Date(r.closes_at).toLocaleDateString(lang === "en" ? "en-IN" : lang === "hi" ? "hi-IN" : "mr-IN", { day: "numeric", month: "short" }) : "";
   return <div className="resolution-box" role="group" aria-label={tr(lang, "rpFixedTitle")}>
     <h4><Icon name="check" size={16} /> {tr(lang, "rpFixedTitle")}</h4>
+    {r.resolution_proof && <ProofCard p={r.resolution_proof} lang={lang} />}
     {when && <small className="muted-line">{trf(lang, "rpAutoClose", { date: when })}</small>}
     <div className="act-row"><button className="primary" disabled={confirm.isPending} onClick={() => confirm.mutate()}><Icon name="check" size={16} /> {tr(lang, "rpConfirmFixed")}</button>
       <button className="secondary" onClick={() => setAsking(a => !a)} aria-expanded={asking}>{tr(lang, "rpNotFixed")}</button></div>
@@ -362,7 +370,8 @@ export default function App() {
   const [flow, setFlow] = useState<"none" | "open" | "hidden">("none"), [flowCategory, setFlowCategory] = useState<string | undefined>(undefined), [flowKey, setFlowKey] = useState(0);
   const [user, setUser] = useState<User | null>(null), [booting, setBooting] = useState(true);
   const [afterLogin, setAfterLogin] = useState(false);
-  const go = (p: Page) => { setPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  const [justReported, setJustReported] = useState<JustReported | null>(null);
+  const go = (p: Page) => { if (p !== "community") setJustReported(null); setPage(p); window.scrollTo({ top: 0, behavior: "smooth" }); };
   const goSection = (id: string) => { setPage("home"); window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); };
   const goFaq = () => { setPage("home"); window.setTimeout(() => document.getElementById("help")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); };
 
@@ -393,7 +402,7 @@ export default function App() {
   const area = user?.area ?? AREAS[0]; // home area: only the starting point of the Community feed, never a report location
   return <div><Header page={view} go={go} goSection={goSection} open={openReport} lang={lang} setLang={setLang} user={user} logout={logout} />
     {view === "home" && <Home open={openReport} go={go} lang={lang} />}
-    {view === "community" && <Community lang={lang} user={user} go={go} defaultArea={area} />}
+    {view === "community" && <Community lang={lang} user={user} go={go} defaultArea={area} justReported={justReported} />}
     {view === "reports" && <Reports lang={lang} user={user} open={openReport} go={go} />}
     {view === "profile" && <Profile lang={lang} setLang={setLang} go={go} goFaq={goFaq} user={user} logout={logout} />}
     {view === "auth" && <AuthPage onLogin={handleLogin} bmcImage={`${import.meta.env.BASE_URL}media/bmc-headquarters.jpg`} />}
@@ -401,7 +410,11 @@ export default function App() {
     {view === "admin" && user && <AdminPanel lang={lang} />}
     {view === "how" && user && user.role !== "citizen" && <StaffGuide lang={lang} role={user.role === "admin" ? "admin" : "authority"} />}
     <MobileNav page={view} go={go} open={openReport} lang={lang} user={user} logout={logout} />
-    {flow !== "none" && user && <Suspense fallback={<div className="modal-backdrop"><div className="report-modal loading-modal" role="status">Loading…</div></div>}><ReportFlow key={flowKey} open={flow === "open"} initialCategory={flowCategory} lang={lang} close={() => setFlow("hidden")} discard={() => { setFlow("none"); }} done={() => { setFlow("none"); qc.invalidateQueries({ queryKey: ["reports"] }); qc.invalidateQueries({ queryKey: ["contribution"] }); qc.invalidateQueries({ queryKey: ["community"] }); go("reports"); }} /></Suspense>}
+    {flow !== "none" && user && <Suspense fallback={<div className="modal-backdrop"><div className="report-modal loading-modal" role="status">Loading…</div></div>}><ReportFlow key={flowKey} open={flow === "open"} initialCategory={flowCategory} lang={lang} close={() => setFlow("hidden")} discard={() => { setFlow("none"); }} done={(created, spot) => {
+        setFlow("none"); qc.invalidateQueries({ queryKey: ["reports"] }); qc.invalidateQueries({ queryKey: ["contribution"] }); qc.invalidateQueries({ queryKey: ["community"] });
+        // After a report the citizen lands on the Community page around the place they reported, to upvote what others reported there.
+        if (spot) { setJustReported({ lat: spot.lat, lng: spot.lng, incidentId: created.incident_id, publicId: created.incident_public_id, area: created.area }); go("community"); } else go("reports");
+      }} /></Suspense>}
     <SiteFooter go={go} goSection={goSection} role={user?.role ?? null} /></div>;
 }
 

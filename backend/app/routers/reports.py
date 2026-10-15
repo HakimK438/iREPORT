@@ -7,6 +7,7 @@ from sqlalchemy import text
 from .. import incidents as svc
 from .. import paging, ratelimit
 from .. import risk_config as cfg
+from ..brief import resolution_proof
 from ..config import get_settings
 from ..deps import Citizen, Db
 from ..errors import ApiError, not_found
@@ -23,6 +24,8 @@ async def create_report(body: ReportIn, citizen: Citizen, db: Db):
     s = get_settings()
     ratelimit.check_window("reports", str(citizen.id), s.rate_reports_per_hour, 3600,
                            f"You can send {s.rate_reports_per_hour} reports an hour. Please try again later.")
+    ratelimit.check_window("reports_day", str(citizen.id), s.rate_reports_per_day, 86400,
+                           f"You can send {s.rate_reports_per_day} reports in a day. Please try again tomorrow.")
     result = await svc.create_report(db, citizen.id, body)
     await db.commit()
     return result
@@ -98,6 +101,8 @@ async def my_reports(citizen: Citizen, db: Db, cursor: str | None = None, limit:
         "reopen_count": r.reopen_count, "can_respond": r.status == "Resolved",
         "closes_at": (r.resolved_at + timedelta(hours=cfg.AUTO_CLOSE_HOURS)) if r.status == "Resolved" and r.resolved_at else None,
     } for r in rows]
+    for it in items:  # the officer's site photo, so the citizen can judge the fix before confirming or reopening
+        it["resolution_proof"] = await resolution_proof(db, it["incident_id"]) if it["status"] in ("Resolved", "Closed") else None
     if not cursor:
         await db.execute(text("UPDATE users SET messages_seen_at = now() WHERE id = :u"), {"u": citizen.id})
         await db.commit()

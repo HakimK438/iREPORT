@@ -890,7 +890,7 @@ a.linkbtn{display:inline-flex;align-items:center;gap:6px;text-decoration:none;co
 
 /* ---- calm theme: white cards with one coloured edge; muted admin palette; no overlapping text ---- */
 .md-card,.ad-item,.md-card[class*="lvl-"],.ad-item[class*="card-"]{background:#fff!important;color:#1f2933!important;box-shadow:0 1px 2px rgba(20,35,28,.06)!important}
-.md-card *,.ad-item *{color:inherit}
+.md-card *,.ad-item>.ad-row *{color:inherit}
 .md-card .mc-title b,.ad-item .ad-main b{color:#1f2933!important}
 .md-card small,.ad-item small,.md-card .loc,.ad-item .loc{color:#5b6670!important}
 .md-card.lvl-emergency,.ad-item.card-emergency{border-left:6px solid #a63d32!important}
@@ -957,3 +957,35 @@ a.linkbtn{display:inline-flex;align-items:center;gap:6px;text-decoration:none;co
 @media(max-width:860px){.site-footer-grid{grid-template-columns:1fr 1fr}}@media(max-width:520px){.site-footer-grid{grid-template-columns:1fr}}
 @media(max-width:900px){.site-footer{margin-bottom:64px}}
 @media print{.site-footer{display:none!important}}
+
+/* After a report: the Community page opens around the place just reported, with a note on what upvoting does. */
+.after-report{display:flex;gap:12px;align-items:flex-start;margin:0 0 16px;padding:14px 16px;border:1px solid #b9dccd;background:var(--green2);border-radius:14px;color:var(--ink)}
+.after-report svg{color:var(--green);flex:none;margin-top:2px}
+.after-report b{display:block;font-size:15px}.after-report small{display:block;margin-top:3px;color:var(--muted);font-size:13px;line-height:1.45}
+.incident-card.just-reported{outline:2px solid var(--green);outline-offset:2px}
+.reporter-line{display:flex;align-items:center;gap:6px;margin:2px 0 0;font-size:13px;color:var(--muted)}
+.reporter-line b{color:var(--ink)}
+
+/* Proof of work: the officer's site photo, the capture box in the resolve panel, and the admin accountability audit. */
+.proof-card{display:flex;gap:12px;align-items:center;margin:10px 0;padding:10px;border:1px solid var(--line);border-radius:12px;background:#fff;max-width:560px}
+.proof-card img{width:96px;height:72px;object-fit:cover;border-radius:8px;display:block}
+.proof-card figcaption{display:grid;gap:2px;font-size:13px;color:var(--muted)}.proof-card figcaption b{color:var(--ink);font-size:14px}
+.proof-card em{font-style:normal;color:var(--amber);font-weight:700}
+.proof-box{display:grid;gap:8px;margin:0 0 10px;padding:12px;border:1px dashed #b9c2cc;border-radius:12px;background:#fafbfa}
+.proof-box small{color:var(--muted);line-height:1.45}.proof-box .proof-ok{display:flex;gap:6px;align-items:center;color:var(--green);font-weight:700;margin:0}
+.proof-thumb{width:120px;height:90px;object-fit:cover;border-radius:8px}
+.crew-links{display:inline-flex;gap:6px;align-items:center;font-size:12px;color:var(--muted)}
+.audit-scroll{overflow-x:auto}.audit-table th,.audit-table td{white-space:nowrap;vertical-align:top}.audit-table td:last-child{white-space:normal;min-width:220px}
+.audit-table tr.attn td{background:#fff7ed}.attn-list{margin:0;padding-left:16px;color:var(--amber);font-size:13px}
+.flag-list{list-style:none;margin:8px 0 0;padding:0;display:grid;gap:8px}.flag-list li{display:grid;gap:2px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.flag-list li span{color:var(--muted);font-size:13px}.flag-list li em{font-style:normal;color:var(--amber);font-weight:700;font-size:13px}
+
+/* Readability fixes: slightly darker amber and red for small text, a legible "No photo" label, and room between the hero headline and its buttons. */
+:root{--amber:#9a5410;--red:#b3392f}
+.no-photo,.no-photo small,.md-card .no-photo small{color:#46524b!important}
+.hero-copy .cta-row{margin-top:30px}
+/* The ward picker on the authority login (development only). */
+.ward-pick select{font-weight:700}
+/* Admin tables on a phone: narrower number columns, and a safety scroll so the page never grows sideways. */
+.perf-table{overflow-x:auto}
+@media(max-width:480px){.perf-tr{grid-template-columns:minmax(0,1.3fr) minmax(0,1fr) 38px 38px 38px;gap:6px}}

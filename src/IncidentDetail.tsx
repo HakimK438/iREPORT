@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "./Icon";
 import { CATEGORY_NAMES, isOpen, type ResponseCat, type Status } from "./store";
-import { api, ApiError, type Brief, type Reason } from "./api";
+import { api, ApiError, type Brief, type ProofUploaded, type Reason } from "./api";
 import { CategoryPhoto } from "./brand";
+import ProofCard from "./ProofCard";
 import { tr, trf, type Lang, type StrKey } from "./i18n";
 import { catLabel, deptLabel } from "./i18nStaff";
 import { areaSlug, LOCALE, navigateUrl, nextAction, shortDate, tone, type NextAction } from "./facts";
@@ -112,11 +113,26 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
   const [category, setCategory] = useState("");
   const [copied, setCopied] = useState(false);
   const [reviewNote, setReviewNote] = useState("");
+  // The site photo taken before "Resolved": uploaded with the phone's position, checked by the server, used up by the Resolved action.
+  const [proof, setProof] = useState<ProofUploaded | null>(null), [proofBusy, setProofBusy] = useState(false), [proofError, setProofError] = useState("");
+  const proofInput = useRef<HTMLInputElement>(null);
+  const takeProof = async (file: File) => {
+    setProofError(""); setProofBusy(true);
+    try {
+      const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
+        if (!navigator.geolocation) { reject(new Error(tr(lang, "v_proofNoGps"))); return; }
+        navigator.geolocation.getCurrentPosition(resolve, e => reject(new Error(e.code === 1 ? tr(lang, "v_proofDenied") : tr(lang, "v_proofNoGps"))), { enableHighAccuracy: true, timeout: 20_000, maximumAge: 0 });
+      });
+      const form = new FormData();
+      form.append("photo", file); form.append("lat", String(pos.coords.latitude)); form.append("lng", String(pos.coords.longitude)); form.append("accuracy_m", String(pos.coords.accuracy));
+      setProof(await api.uploadProof(id, form));
+    } catch (e) { setProof(null); setProofError((e as Error).message); } finally { setProofBusy(false); if (proofInput.current) proofInput.current.value = ""; }
+  };
   const officers = useQuery({ queryKey: ["authority", "officers"], queryFn: api.officers, enabled: !readOnly && (panel === "assign"), staleTime: 5 * 60_000 });
 
   const refresh = () => {
     for (const key of [["authority", "list"], ["authority", "stats"], ["authority", "incident", id], ["authority", "map"], ["authority", "analytics"]]) qc.invalidateQueries({ queryKey: key });
-    setPanel(null); setText(""); setReply("");
+    setPanel(null); setText(""); setReply(""); setProof(null); setProofError("");
   };
   const review = useMutation({ mutationFn: (v: { decision: "genuine" | "fake" }) => api.authorityReview(id, v.decision, reviewNote.trim() || undefined), onSuccess: refresh });
   const act = useMutation({ mutationFn: (body: Parameters<typeof api.authorityUpdate>[1]) => api.authorityUpdate(id, body), onSuccess: refresh });
@@ -146,6 +162,10 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
     owner: d.assignee ? trf(lang, "v_basisOwner", { name: d.assignee.name }) : tr(lang, "v_basisNoOwner"),
   };
   const reasons = d.reasons.slice(0, 3);
+  // Plain text for the field crew: what, where, how urgent and a map link. No reporter names or phone numbers.
+  const crewText = [`${d.public_id}: ${catLabel("en", d.category)}${d.what.problem ? ` (${d.what.problem})` : ""}`, [d.where.address, d.where.area].filter(Boolean).join(", "),
+    `${tr("en", `resp_${d.response}` as StrKey)}${d.due_at ? `, fix by ${new Date(d.due_at).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}` : ""}`,
+    `https://maps.google.com/?q=${d.where.lat.toFixed(6)},${d.where.lng.toFixed(6)}`].filter(Boolean).join("\n");
   const photoDisagrees = !!d.ai.category && d.ai.source !== "text" && catLabel("en", d.ai.category) !== catLabel("en", d.category);
   const estimate = d.people_estimate === "few" ? tr(lang, "v_est_few") : d.people_estimate === "many" ? tr(lang, "v_est_many") : null;
   const dept = deptLabel(lang, d.department);
@@ -169,7 +189,7 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
     else if (panel === "duplicate") run({ status: "Duplicate", duplicate_of: text.trim() });
     else if (panel === "transfer") run({ status: "Transferred", category, reason: text.trim() });
   };
-  const panelReady = panel === "resolve" ? text.trim().length >= 5 : panel === "assign" ? !!(officer || officers.data?.items.length) : panel === "schedule" ? !!date : panel === "transfer" ? !!category && !!text.trim() : !!text.trim();
+  const panelReady = panel === "resolve" ? text.trim().length >= 5 && (!d.proof_required || !!proof) : panel === "assign" ? !!(officer || officers.data?.items.length) : panel === "schedule" ? !!date : panel === "transfer" ? !!category && !!text.trim() : !!text.trim();
   const moreItems: { key: Panel | "ack" | "start" | "res"; label: StrKey }[] = [];
   if (!readOnly && open) {
     if (action !== "schedule") moreItems.push({ key: "schedule", label: "v_a_schedule" });
@@ -183,7 +203,8 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
     <header className="brief-head">
       <div className="brief-id"><b>{d.public_id}</b><span className="cat-tag"><CategoryPhoto category={d.category} className="cat-dot" label={false} />{catLabel(lang, d.category)}</span><StatusPill status={status} lang={lang} /><ResponseChip response={d.response} lang={lang} /><DueText row={d} lang={lang} />
         {d.reopen_count > 0 && <span className="due red">{trf(lang, "v_reopened", { n: d.reopen_count })}</span>}</div>
-      <div className="brief-tools">{onClose && <button className="secondary compact" onClick={onClose}>{tr(lang, "m_close")}</button>}<button className="secondary compact print-btn" onClick={e => printBrief(e.currentTarget)}>{tr(lang, "v_print")}</button></div>
+      <div className="brief-tools">{onClose && <button className="secondary compact" onClick={onClose}>{tr(lang, "m_close")}</button>}<button className="secondary compact print-btn" onClick={e => printBrief(e.currentTarget)}>{tr(lang, "v_print")}</button>
+        {!readOnly && open && <span className="crew-links" aria-label={tr(lang, "v_sendCrew")}>{tr(lang, "v_sendCrew")}: <a className="secondary compact" href={`mailto:?subject=${encodeURIComponent(`Work order ${d.public_id}`)}&body=${encodeURIComponent(crewText)}`}>{tr(lang, "v_byEmail")}</a> <a className="secondary compact" href={`sms:?body=${encodeURIComponent(crewText)}`}>{tr(lang, "v_bySms")}</a></span>}</div>
     </header>
 
     <section className="summary" aria-label={tr(lang, "v_what")}>
@@ -195,6 +216,7 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
         <div><dt>{tr(lang, "v_responsible")}</dt><dd>{trf(lang, "v_areaAuthority", { area: d.area ?? "—" })} · {dept}</dd></div>
       </dl>
       {d.due_at && <p className="muted-line">{trf(lang, "v_deadlineRule", { within: span(d.response_hours * 3_600_000), level: tr(lang, `resp_${d.response}` as StrKey) })}</p>}
+      {d.resolution_proof && <ProofCard p={d.resolution_proof} lang={lang} staff />}
       {d.scheduled_for && <p className="meta-line">{trf(lang, "v_visit", { date: shortDate(d.scheduled_for, lang) })}</p>}
       {d.duplicate_of && <p className="meta-line">{trf(lang, "v_dupOf", { no: d.duplicate_of })}</p>}
       {d.status_reason && ["On Hold", "Rejected", "Reopened", "Transferred"].includes(status) && <p className="meta-line">{staffStatus(lang, status)}: {d.status_reason}</p>}
@@ -272,6 +294,13 @@ export default function Brief({ id, lang = "en", readOnly = false, onClose }: { 
       {panel && <div className="act-panel" role="group">
         {panel === "assign" && <label className="fld"><span>{tr(lang, "v_a_assign")}</span><select value={officer} onChange={e => setOfficer(e.target.value)}>{officers.data?.items.map(o => <option key={o.id} value={o.id}>{o.name}{o.is_me ? ` (${tr(lang, "v_me")})` : ""} · {deptLabel(lang, o.department)}</option>)}</select></label>}
         {panel === "schedule" && <label className="fld"><span>{tr(lang, "v_visitDate")}</span><input type="date" value={date} onChange={e => setDate(e.target.value)} /></label>}
+        {panel === "resolve" && d.proof_required && <div className="proof-box">
+          <b>{tr(lang, "v_proofTitle")}</b><small>{tr(lang, "v_proofHelp")}</small>
+          <input ref={proofInput} type="file" accept="image/*" capture="environment" hidden onChange={e => { const f = e.target.files?.[0]; if (f) void takeProof(f); }} />
+          <button type="button" className="secondary compact" disabled={proofBusy} onClick={() => proofInput.current?.click()}><Icon name="camera" size={16} /> {proofBusy ? tr(lang, "v_proofChecking") : proof ? tr(lang, "v_proofAgain") : tr(lang, "v_proofTake")}</button>
+          {proof && <p className="proof-ok" role="status"><Icon name="check" size={16} /> {trf(lang, "v_proofOk", { m: proof.distance_m })}</p>}
+          {proof && <img className="proof-thumb" src={proof.thumb_url} alt="" />}
+          {proofError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {proofError}</div>}</div>}
         {(panel === "hold" || panel === "reject" || panel === "transfer" || panel === "resolve") && <>
           {panel === "transfer" && <label className="fld"><span>{tr(lang, "v_correctCat")}</span><select value={category} onChange={e => setCategory(e.target.value)}><option value="">—</option>{[...CATEGORY_NAMES, "Road Damage", "Drainage"].filter(c => c !== d.category).map(c => <option key={c} value={c}>{catLabel(lang, c)}</option>)}</select></label>}
           <label className="fld"><span>{tr(lang, panel === "resolve" ? "v_resolveNote" : "v_reason")}</span><textarea rows={2} maxLength={500} value={text} onChange={e => setText(e.target.value)} /></label></>}

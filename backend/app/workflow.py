@@ -14,9 +14,11 @@ import uuid
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from . import accountability as acc
 from . import incidents as svc
 from . import risk_config as cfg
 from .ai import rules
+from .config import get_settings
 from .errors import ApiError, not_found
 from .priority import response_of
 from .refdata import ref
@@ -35,6 +37,8 @@ ALLOWED: dict[str, set[str]] = {
     "On Hold": {"Acknowledged", "Scheduled", "In Progress", "Resolved", "Rejected", "Duplicate", "Transferred"},
     "Resolved": {"In Progress"},  # rework after a premature "Resolved"
 }
+SAME_REASON_LIMIT = 3  # the 4th identical hold/reject reason by one officer within 24 hours is refused
+FAKE_REASON = "Fake or irrelevant report."  # what the review screen writes when an officer decides a report is fake; exempt from that rule
 NEEDS_REASON = {"Resolved": "Write a short note on what was done before marking it resolved.", "On Hold": "Say why the complaint is on hold.", "Rejected": "Say why the complaint is rejected.", "Transferred": "Say why it is transferred."}
 
 
@@ -110,6 +114,14 @@ async def apply_officer_update(db: AsyncSession, officer: uuid.UUID, incident_id
                 raise ApiError(422, "same_category", "That is already the category of this complaint.")
     officer_name = await _approved_officer(db, body.assigned_to) if body.assigned_to else None
     takes_over = bool(new and new != cur and new in OWNING and row.assigned_to is None and not body.assigned_to)
+    if new and new != cur and new in ("On Hold", "Rejected") and not body.reason.startswith(FAKE_REASON):
+        # Copy-pasting one reason onto many complaints is how a hold or a reject is used without looking at the complaint.
+        same = await db.scalar(text("""SELECT count(*) FROM status_events WHERE actor_id = :a AND to_status = CAST(:s AS issue_status) AND created_at > now() - interval '24 hours'
+                                       AND lower(btrim(reason)) = lower(btrim(CAST(:r AS text)))"""), {"a": officer, "s": new, "r": body.reason})
+        if same >= SAME_REASON_LIMIT:
+            raise ApiError(422, "reason_repeated", f"You have already given exactly this reason {same} times today. Write what is specific to this complaint.")
+    if new == "Resolved" and cur != "Resolved" and get_settings().require_resolution_proof:
+        await acc.consume_proof(db, officer, incident_id, body.reason.strip())  # 422 proof_required unless a fresh, verified site photo exists; flags go to the audit
 
     # ---- write ----
     if takes_over:

@@ -295,7 +295,7 @@ async def test_geo_resolve_is_public_and_gis_derived(client):
     r = await client.get("/geo/resolve", params={"lat": COLABA[0], "lng": COLABA[1]})
     assert r.status_code == 200
     j = r.json()
-    assert j["area"] == "Colaba" and j["departments"]["Pothole"] == "Roads & Traffic" and j["method"] == "nearest_area_centre"
+    assert j["area"] == "Colaba" and j["departments"]["Pothole"] == "Roads & Traffic" and j["method"] == "polygon"  # migration 0017: official ward polygons
     far = (await client.get("/geo/resolve", params={"lat": 28.6, "lng": 77.2})).json()  # Delhi: outside the seeded areas
     assert far["area"] is None
 

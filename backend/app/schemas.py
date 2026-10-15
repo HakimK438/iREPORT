@@ -212,6 +212,7 @@ class IncidentPublic(BaseModel):
     updated_at: datetime
     distance_m: float | None = None
     thumb_url: str | None = None
+    reported_by: str | None = None
     confirmed_by_me: bool = False
     reported_by_me: bool = False
 

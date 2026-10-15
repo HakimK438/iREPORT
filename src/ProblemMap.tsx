@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
-import type { MapArea, MapCluster, MapIncident } from "./api";
+import type { AreaOutline, MapArea, MapCluster, MapIncident } from "./api";
 import { AREA_CENTRES, isOpen } from "./store";
 import { tr, type Lang, type StrKey } from "./i18n";
 
@@ -10,13 +10,23 @@ export const LEVEL_COLOUR: Record<string, string> = { Emergency: "#b3261e", Urge
 const LEVEL_RADIUS: Record<string, number> = { Emergency: 11, Urgent: 9, Routine: 7, Planned: 6 };
 const MUMBAI: L.LatLngTuple = [19.07, 72.88];
 
-interface Props { lang: Lang; incidents: MapIncident[]; clusters: MapCluster[]; areas: MapArea[]; selectedId: string | null; onSelect: (id: string) => void; fitKey: string; showClusters: boolean }
+interface Props { lang: Lang; incidents: MapIncident[]; clusters: MapCluster[]; areas: MapArea[]; selectedId: string | null; onSelect: (id: string) => void; fitKey: string; showClusters: boolean; outline?: AreaOutline | null }
 
-/** Leaflet map of every incident (circle per problem) with the DBSCAN clusters as dashed rings. */
-export default function ProblemMap({ lang, incidents, clusters, areas, selectedId, onSelect, fitKey, showClusters }: Props) {
+/** GeoJSON [lng, lat] rings to Leaflet [lat, lng] rings, for a Polygon or MultiPolygon. */
+const toLatLngPolygons = (g: AreaOutline["geometry"]): L.LatLngTuple[][][] => {
+  const polys = (g.type === "Polygon" ? [g.coordinates as number[][][]] : (g.coordinates as number[][][][]));
+  return polys.map(poly => poly.map(ring => ring.map(([lng, lat]) => [lat, lng] as L.LatLngTuple)));
+};
+
+/** Leaflet map of every incident (circle per problem) with the DBSCAN clusters as dashed rings.
+    With `outline` (an area authority's own map) the border of its BMC ward is drawn as a thin line. */
+export default function ProblemMap({ lang, incidents, clusters, areas, selectedId, onSelect, fitKey, showClusters, outline }: Props) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const layer = useRef<L.LayerGroup | null>(null);
+  const outlineLayer = useRef<L.LayerGroup | null>(null);
+  const outlineRef = useRef(outline);
+  outlineRef.current = outline;
   const markers = useRef(new Map<string, L.CircleMarker>());
   const labels = useRef<L.LayerGroup | null>(null);
   const lastFit = useRef("");
@@ -33,6 +43,7 @@ export default function ProblemMap({ lang, incidents, clusters, areas, selectedI
     if (!el.current) return;
     const m = L.map(el.current, { scrollWheelZoom: false }).setView(MUMBAI, 11);
     L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" }).addTo(m);
+    outlineLayer.current = L.layerGroup().addTo(m); // below the points, so the border never hides a problem
     layer.current = L.layerGroup().addTo(m);
     labels.current = L.layerGroup().addTo(m);
     map.current = m;
@@ -40,6 +51,16 @@ export default function ProblemMap({ lang, incidents, clusters, areas, selectedI
     ro.observe(el.current);
     return () => { ro.disconnect(); m.remove(); map.current = null; };
   }, []);
+
+  // The authority's ward: just its border, as a thin line (no shading), and zoom to it.
+  useEffect(() => {
+    const m = map.current, g = outlineLayer.current;
+    if (!m || !g) return;
+    g.clearLayers();
+    if (!outline) return;
+    const border = L.polygon(toLatLngPolygons(outline.geometry), { color: "#126b50", weight: 2, opacity: 0.9, fill: false, interactive: false }).addTo(g);
+    m.fitBounds(border.getBounds(), { padding: [24, 24] });
+  }, [outline]);
 
   // Redraw the points and rings whenever the data or filter changes.
   useEffect(() => {
@@ -59,8 +80,8 @@ export default function ProblemMap({ lang, incidents, clusters, areas, selectedI
       markers.current.set(i.id, mk);
     }
     highlight(selectedRef.current); // a background refresh rebuilds the points, so keep the selection visible
-    // Re-fit only when the area filter changes (or on first data), never on a background refresh.
-    if (lastFit.current !== fitKey && incidents.length) {
+    // Re-fit only when the area filter changes (or on first data), never on a background refresh. With an outline the map stays on the area.
+    if (lastFit.current !== fitKey && incidents.length && !outlineRef.current) {
       lastFit.current = fitKey;
       m.fitBounds(L.latLngBounds(incidents.map(i => [i.lat, i.lng] as L.LatLngTuple)), { padding: [40, 40], maxZoom: 15 });
     }
@@ -75,6 +96,7 @@ export default function ProblemMap({ lang, incidents, clusters, areas, selectedI
       g.clearLayers();
       const z = m.getZoom();
       for (const [name, c] of Object.entries(AREA_CENTRES)) {
+        if (outline && name !== outline.area) continue; // an area authority's map names only its own area
         if (z < 12 && !withOpen.has(name)) continue;
         if (z < 10) continue;
         L.marker([c.lat, c.lng], { interactive: false, keyboard: false, icon: L.divIcon({ className: "area-label", html: `<span>${name}</span>`, iconSize: [0, 0] }) }).addTo(g);
@@ -83,7 +105,7 @@ export default function ProblemMap({ lang, incidents, clusters, areas, selectedI
     draw();
     m.on("zoomend", draw);
     return () => { m.off("zoomend", draw); };
-  }, [areas]);
+  }, [areas, outline]);
 
   // Highlight and centre the selected problem (only when the selection changes, not on every refresh).
   useEffect(() => {

@@ -16,6 +16,8 @@ os.environ.update(
     ENV="test", STORAGE_BACKEND="memory", ENABLE_SCHEDULER="false",
     ADMIN_EMAIL="admin@example.com", ADMIN_PASSWORD="admin-pass-123",
     JWT_SECRET="test-secret-test-secret-test-secret-123", RATE_REGISTER="1000", HOTSPOT_CACHE_SECONDS="0",
+    # The older tests resolve complaints without a site photo and reuse flat stand-in images; test_accountability.py switches both rules on.
+    REQUIRE_RESOLUTION_PROOF="false", PHOTO_REUSE_BLOCK="false",
 )
 
 import asyncio  # noqa: E402

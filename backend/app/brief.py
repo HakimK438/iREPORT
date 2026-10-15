@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from . import incidents as svc
 from . import risk_config as cfg
+from .config import get_settings
 from .errors import not_found
 from .priority import reasons_of
 from .status import open_sql
@@ -91,4 +92,19 @@ async def build_brief(db: AsyncSession, incident_id: uuid.UUID, viewer_id: uuid.
 
     d["timeline"] = (await svc.history(db, [incident_id], internal=True))[incident_id]
     d["messages"] = (await svc.thread(db, [incident_id], viewer_id, as_authority=True))[incident_id]
+    d["resolution_proof"] = await resolution_proof(db, incident_id)
+    d["proof_required"] = get_settings().require_resolution_proof  # the resolve panel asks for the site photo only when the server will insist
     return d
+
+
+async def resolution_proof(db: AsyncSession, incident_id: uuid.UUID) -> dict | None:
+    """The site photo the officer took when marking this complaint resolved (shown to officers, the admin and the reporting citizen)."""
+    p = (await db.execute(text("""
+        SELECT p.used_at, p.distance_m, p.accuracy_m, p.flags, u.name AS officer, m.storage_key, m.thumb_key
+        FROM resolution_proofs p JOIN media m ON m.id = p.media_ids[1] JOIN users u ON u.id = p.actor_id
+        WHERE p.incident_id = :i AND p.used_at IS NOT NULL ORDER BY p.used_at DESC LIMIT 1"""), {"i": incident_id})).first()
+    if not p:
+        return None
+    storage = get_storage()
+    return {"at": p.used_at, "officer": p.officer, "distance_m": round(p.distance_m), "accuracy_m": round(p.accuracy_m) if p.accuracy_m is not None else None,
+            "flags": list(p.flags), "url": storage.signed_url(p.storage_key), "thumb_url": storage.signed_url(p.thumb_key)}

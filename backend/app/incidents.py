@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from . import accountability as acc
 from . import risk_config as cfg
 from . import status as status_mod
 from .ai import pipeline, rules
@@ -27,6 +28,7 @@ ROW_SELECT = """
 SELECT i.id, i.public_id, c.name AS category, c.hazard_points, d.name AS department, w.name AS area, i.address_text, i.severity::text AS severity,
        i.status::text AS status, i.flags, i.affected_count, i.priority_score, i.risk, i.due_at, i.scheduled_for, i.reopen_count, i.status_reason,
        i.assigned_to, au.name AS assignee_name, i.needs_review, i.review_reason, cz.n AS citizens, i.created_at, i.updated_at,
+       CASE WHEN ru.deleted_at IS NULL THEN ru.name END AS reporter_name,
        fr.problem_type, fr.ai_category, fr.ai_confidence, fr.ai_source, fr.ai_disagreement, fr.nlp, fr.citizen_message, fr.user_corrected, fr.location_source,
        fr.sample_confidence, fr.answers, fm.thumb_key, fm.storage_key {extra}
 FROM page i
@@ -36,9 +38,10 @@ LEFT JOIN wards w ON w.id = i.ward_id
 LEFT JOIN users au ON au.id = i.assigned_to
 LEFT JOIN LATERAL (SELECT count(*)::int AS n FROM (SELECT user_id FROM reports WHERE incident_id = i.id AND duplicate_of_report_id IS NULL
                                                   UNION SELECT user_id FROM confirmations WHERE incident_id = i.id) u) cz ON true
-LEFT JOIN LATERAL (SELECT r.problem_type, ac.name AS ai_category, r.ai_confidence, r.ai_source, r.ai_disagreement, r.nlp, r.citizen_message, r.user_corrected, r.location_source, r.sample_confidence, r.answers
+LEFT JOIN LATERAL (SELECT r.user_id AS reporter_id, r.problem_type, ac.name AS ai_category, r.ai_confidence, r.ai_source, r.ai_disagreement, r.nlp, r.citizen_message, r.user_corrected, r.location_source, r.sample_confidence, r.answers
                    FROM reports r LEFT JOIN categories ac ON ac.id = r.ai_category_id
                    WHERE r.incident_id = i.id AND r.duplicate_of_report_id IS NULL ORDER BY r.created_at LIMIT 1) fr ON true
+LEFT JOIN users ru ON ru.id = fr.reporter_id
 LEFT JOIN LATERAL (SELECT m.thumb_key, m.storage_key FROM reports r JOIN media m ON m.report_id = r.id
                    WHERE r.incident_id = i.id AND r.duplicate_of_report_id IS NULL ORDER BY r.created_at, m.created_at LIMIT 1) fm ON true
 """
@@ -54,9 +57,18 @@ def title_of(problem_type: str | None, category: str, address: str | None) -> st
     return f"{what} at {address}" if address else what
 
 
+def reporter_label(name: str | None) -> str | None:
+    """First name and the initial of the last name ("Aarav Kumar" -> "Aarav K."). Never an email, phone or full name."""
+    parts = (name or "").split()
+    if not parts:
+        return None
+    return parts[0] if len(parts) == 1 else f"{parts[0]} {parts[-1][0].upper()}."
+
+
 def public_row(row) -> dict:
     storage = get_storage()
     return {
+        "reported_by": reporter_label(getattr(row, "reporter_name", None)),
         "id": row.id, "public_id": row.public_id, "title": title_of(row.problem_type, row.category, row.address_text),
         "category": row.category, "area": row.area, "address_text": row.address_text, "severity": row.severity,
         "status": row.status, "flags": list(row.flags), "affected_count": row.affected_count, "citizens": row.citizens,
@@ -166,6 +178,7 @@ async def hotspots(db: AsyncSession, limit: int = 5) -> list[dict]:
 CLUSTER_EPS_M = 300
 CLUSTER_MIN_POINTS = 2
 MAP_LIMIT = 3000
+WARD_EDGE_M = 300  # a point this close to an area polygon (shore, border) still belongs to it
 
 MAP_SQL = f"""
 SELECT i.id, i.public_id, c.name AS category, w.name AS area, i.address_text, i.severity::text AS severity, i.status::text AS status,
@@ -323,9 +336,12 @@ async def refresh_geo_facts(db: AsyncSession, ids: list[uuid.UUID] | None = None
 
 
 async def resolve_ward(db: AsyncSession, lat: float, lng: float) -> int | None:
-    """Ward of the INCIDENT point: PostGIS polygon first, else the nearest seeded area centre.
-    The citizen's profile area is never used."""
-    ward = await db.scalar(text("SELECT id FROM wards WHERE geom IS NOT NULL AND ST_Covers(geom, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography) LIMIT 1"), {"lat": lat, "lng": lng})
+    """Area of the INCIDENT point: the area polygon that covers it (the official BMC ward, cut between its areas), or the
+    closest polygon within WARD_EDGE_M (a pin on the shore or on a ward edge), else the nearest seeded area centre
+    (Metropolitan Region). The citizen's profile area is never used."""
+    ward = await db.scalar(text("""SELECT id FROM wards w, (SELECT ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography AS p) q
+                                   WHERE w.geom IS NOT NULL AND ST_DWithin(w.geom, q.p, :edge) ORDER BY ST_Distance(w.geom, q.p), w.id LIMIT 1"""),
+                           {"lat": lat, "lng": lng, "edge": WARD_EDGE_M})
     return ward or ref.ward_id(nearest_area(lat, lng))
 
 
@@ -382,6 +398,16 @@ async def create_report(db: AsyncSession, user_id: uuid.UUID, body: ReportIn) ->
         if owned != len(media_ids):
             raise ApiError(422, "invalid_media", "One of the photos was not found. Please add it again.")
     review_reasons: list[str] = []
+    if media_ids:
+        # The same photo cannot back two complaints (perceptual hash, so a re-saved copy counts): the usual way to fake a report.
+        reused = await acc.find_reused_photo(db, media_ids)
+        if reused:
+            raise ApiError(409, "photo_reused", f"This photo was already used in another report ({reused}). Please take a new photo of this problem.")
+        gap = await acc.photo_gps_gap(db, media_ids, body.lat, body.lng)
+        if gap is not None and gap > s.photo_gps_max_gap_m:
+            review_reasons.append(f"The photo was taken about {round(gap / 100) / 10} km from the spot that was pinned.")
+    if strike_note := await acc.check_reporter(db, user_id):  # 403 when blocked; a note for the officers when only suspect
+        review_reasons.append(strike_note)
     if media_ids:
         # A photo the image model is sure does not show this problem is refused (it would only fill the database);
         # a weaker mismatch keeps the report but flags it for an officer to review.
