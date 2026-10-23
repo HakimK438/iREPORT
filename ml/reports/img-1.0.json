@@ -1,0 +1,198 @@
+{
+  "version": "img-1.0",
+  "method": "linear probe on frozen EfficientNet-Lite0 features",
+  "classes": [
+    "Garbage",
+    "Other",
+    "Pothole",
+    "Road Damage",
+    "Streetlight",
+    "not_civic"
+  ],
+  "images": {
+    "train": 1800,
+    "val": 360,
+    "test": 360
+  },
+  "C": 0.05,
+  "temperature": 0.7,
+  "val_macro_f1": 0.919,
+  "test_macro_f1_sklearn": 0.9276,
+  "test_accuracy_fp32": 0.9278,
+  "test_accuracy_int8": 0.9278,
+  "shipped": "model.int8.onnx",
+  "latency": {
+    "threads": 2,
+    "p50_ms": 22.9,
+    "p95_ms": 27.7,
+    "mb": 3.83
+  },
+  "data_manifest": {
+    "hamming": 4,
+    "cap": {
+      "train": 300,
+      "val": 60,
+      "test": 60
+    },
+    "counts": {
+      "val": {
+        "Pothole": {
+          "civicsense": 10,
+          "cleanliness": 50
+        },
+        "Road Damage": {
+          "cleanliness": 60
+        },
+        "Garbage": {
+          "cleanliness": 32,
+          "civicsense": 28
+        },
+        "Other": {
+          "cleanliness": 37,
+          "civicsense": 23
+        },
+        "Streetlight": {
+          "streetlight": 60
+        },
+        "not_civic": {
+          "notcivic": 60
+        }
+      },
+      "test": {
+        "Pothole": {
+          "cleanliness": 56,
+          "civicsense": 4
+        },
+        "Road Damage": {
+          "cleanliness": 60
+        },
+        "Garbage": {
+          "cleanliness": 32,
+          "civicsense": 28
+        },
+        "Other": {
+          "civicsense": 22,
+          "cleanliness": 38
+        },
+        "Streetlight": {
+          "streetlight": 60
+        },
+        "not_civic": {
+          "notcivic": 60
+        }
+      },
+      "train": {
+        "Pothole": {
+          "civicsense": 33,
+          "cleanliness": 267
+        },
+        "Road Damage": {
+          "cleanliness": 300
+        },
+        "Garbage": {
+          "civicsense": 125,
+          "cleanliness": 175
+        },
+        "Other": {
+          "cleanliness": 181,
+          "civicsense": 119
+        },
+        "Streetlight": {
+          "streetlight": 300
+        },
+        "not_civic": {
+          "notcivic": 300
+        }
+      }
+    }
+  },
+  "caveat": "Small, third-party, non-Mumbai data. Water Leakage, Drainage and Electrical Hazard have no data and are not predicted.",
+  "evaluation": {
+    "model": "backend\\models\\img-1.0.onnx",
+    "model_mb": 3.83,
+    "n_test": 360,
+    "accuracy": 0.9278,
+    "macro_f1": 0.9275,
+    "per_class_recall": {
+      "Garbage": 0.9,
+      "Other": 0.9167,
+      "Pothole": 0.8833,
+      "Road Damage": 0.9667,
+      "Streetlight": 0.9667,
+      "not_civic": 0.9333
+    },
+    "confusion_matrix": {
+      "labels": [
+        "Garbage",
+        "Other",
+        "Pothole",
+        "Road Damage",
+        "Streetlight",
+        "not_civic"
+      ],
+      "rows_true_cols_pred": [
+        [
+          54,
+          2,
+          1,
+          0,
+          2,
+          1
+        ],
+        [
+          2,
+          55,
+          0,
+          0,
+          1,
+          2
+        ],
+        [
+          1,
+          1,
+          53,
+          4,
+          0,
+          1
+        ],
+        [
+          0,
+          0,
+          2,
+          58,
+          0,
+          0
+        ],
+        [
+          1,
+          0,
+          1,
+          0,
+          58,
+          0
+        ],
+        [
+          1,
+          2,
+          0,
+          0,
+          1,
+          56
+        ]
+      ]
+    },
+    "uncertain_share": 0.0528,
+    "accuracy_when_confident": 0.9413,
+    "latency_ms_incl_preprocess": {
+      "p50": 33.1,
+      "p95": 40.2,
+      "threads": 2
+    }
+  },
+  "limits": [
+    "test images come from the same public sources as the training images (de-duplicated, but not independent): optimistic",
+    "not_civic = flowers and Caltech101 objects/faces only: weak on screenshots, indoor scenes, documents",
+    "no Mumbai photos",
+    "Water Leakage, Drainage, Electrical Hazard have no data and are not predicted"
+  ]
+}

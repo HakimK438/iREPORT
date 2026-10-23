@@ -1,0 +1,10 @@
+{
+  "description": "Enhance your learning with a flashcard study app that utilizes spaced repetition and tracks your progress, perfect for students and lifelong learners.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

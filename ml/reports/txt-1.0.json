@@ -1,0 +1,151 @@
+{
+  "version": "txt-1.0",
+  "data": [
+    "ml\\data\\text\\complaints.csv"
+  ],
+  "sentences": 280,
+  "held_out_test": {
+    "n": 70,
+    "accuracy": 0.743,
+    "macro_f1": 0.731,
+    "per_class_recall": {
+      "Pothole": 0.889,
+      "Road Damage": 0.875,
+      "Streetlight": 0.889,
+      "Garbage": 0.556,
+      "Water Leakage": 0.889,
+      "Drainage": 0.778,
+      "Electrical Hazard": 0.875,
+      "Other": 0.222
+    },
+    "per_language_accuracy": {
+      "en": {
+        "n": 32,
+        "accuracy": 0.719
+      },
+      "hi": {
+        "n": 14,
+        "accuracy": 0.643
+      },
+      "hinglish": {
+        "n": 11,
+        "accuracy": 0.818
+      },
+      "mr": {
+        "n": 12,
+        "accuracy": 0.917
+      },
+      "mr-latn": {
+        "n": 1,
+        "accuracy": 0.0
+      }
+    },
+    "confusion_matrix": {
+      "labels": [
+        "Pothole",
+        "Road Damage",
+        "Streetlight",
+        "Garbage",
+        "Water Leakage",
+        "Drainage",
+        "Electrical Hazard",
+        "Other"
+      ],
+      "rows_true_cols_pred": [
+        [
+          8,
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          7,
+          0,
+          0,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          8,
+          0,
+          0,
+          0,
+          0,
+          1
+        ],
+        [
+          0,
+          2,
+          0,
+          5,
+          0,
+          0,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          8,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          2,
+          7,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          0,
+          0,
+          7,
+          0
+        ],
+        [
+          1,
+          0,
+          0,
+          4,
+          0,
+          0,
+          2,
+          2
+        ]
+      ]
+    }
+  },
+  "cv5": {
+    "macro_f1_mean": 0.715,
+    "macro_f1_std": 0.084,
+    "accuracy_mean": 0.725
+  },
+  "model_file": "backend\\models\\txt-1.0.npz",
+  "model_mb": 0.14,
+  "runtime_latency_this_machine": {
+    "p50_ms": 0.616,
+    "p95_ms": 1.646,
+    "runs": 350
+  },
+  "features": 9621
+}

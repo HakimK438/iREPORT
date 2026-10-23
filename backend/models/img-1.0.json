@@ -1,0 +1,27 @@
+{
+  "version": "img-1.0",
+  "labels": [
+    "Garbage",
+    "Other",
+    "Pothole",
+    "Road Damage",
+    "Streetlight",
+    "not_civic"
+  ],
+  "input_size": 224,
+  "crop_pct": 0.875,
+  "mean": [
+    0.5,
+    0.5,
+    0.5
+  ],
+  "std": [
+    0.5,
+    0.5,
+    0.5
+  ],
+  "temperature": 0.7,
+  "arch": "tf_efficientnet_lite0",
+  "precision": "int8",
+  "method": "frozen ImageNet backbone + logistic regression (linear probe)"
+}

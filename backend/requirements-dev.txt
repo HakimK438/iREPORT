@@ -1,0 +1,6 @@
+-r requirements.txt
+pytest>=8.3
+pytest-asyncio>=0.24
+httpx>=0.28
+# Only used by tests to build a tiny ONNX fixture model.
+onnx>=1.17

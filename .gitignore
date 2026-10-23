@@ -1,0 +1,59 @@
+node_modules/
+dist/
+build/
+.cache/
+.env*
+!.env.example
+.vite/
+# Python / ML
+.venv/
+__pycache__/
+.pytest_cache/
+backend/tests/.models/
+ml/runs/
+ml/data/images/
+vite.config.*.timestamp-*
+*.tsbuildinfo
+*-debug.log*
+logs/
+*.log
+.claude-replay.*
+.tmp-*
+/.figma/design-context/
+
+# Platform-managed agentplat state, not project source. In the
+# client-initiated single-repo workspace layout (make's `Path: "."` spec) the
+# repo root IS the workspace root, so these land inside this repo rather than
+# beside it.
+/.plugins/
+/.opencode-skills/
+
+# image model data and runs (large, third-party licences)
+ml/data/raw/
+ml/data/images/
+ml/runs/
+ml/data/images_v2/
+
+# Private / local-only files (kept on disk, not published)
+AGENTS.md
+CLAUDE.md
+IREPORT_FINAL_CLAUDE_TASK.md
+PANEL_REVIEW_GUIDE.md
+PROJECT_GUIDE.md
+/docs/
+/ppt_images/
+/s2/
+*.ppt
+*.pptx
+.env
+.env.*
+!.env.example
+_backup*/
+# Only README.md is published; other notes stay local
+/*.md
+!/README.md
+public/**/CREDITS.md
+# Unused source art (the app serves public/)
+/Location_images/
+/category_images/
+/symbols/
