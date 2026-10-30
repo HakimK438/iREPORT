@@ -38,8 +38,8 @@ Everything else (Python, PostgreSQL, PostGIS, MinIO) runs inside Docker.
 ### 1. Clone and configure
 
 ```bash
-git clone https://github.com/amaansiddiqueacademics-a11y/iREPORT_Copy.git
-cd iREPORT_Copy
+git clone https://github.com/HakimK438/iREPORT.git
+cd iREPORT
 ```
 
 Create your `.env` file from the example:
