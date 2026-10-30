@@ -24,8 +24,9 @@ from app.schemas import ReportIn
 from app.security import hash_password
 from app.storage import get_storage, new_keys
 
-AREAS = ["Andheri West", "Bandra", "Colaba", "Fort", "Dadar", "Goregaon", "Malad", "Borivali",
-         "Sion", "Kurla", "Ghatkopar", "Powai", "Juhu", "Mahim", "Worli", "Vile Parle"]
+# Every seeded area gets a ward officer login (ward.<area>@bmc.demo); areas with fewer than MIN_INCIDENTS complaints get a set of demo ones.
+AREAS = list(AREA_CENTRES)
+MIN_INCIDENTS = 3
 IMAGES = Path(__file__).resolve().parent.parent / "seed_data" / "images"
 # (category, problem type, description, landmark). Ten per area; the photo comes from the category's own folder.
 PROBLEMS = [
@@ -48,6 +49,20 @@ STEPS = ["Acknowledged", "Scheduled", "In Progress", "Resolved", "Closed"]
 _ROADS: dict[str, list[list[float]]] | None = None
 
 
+async def polygon_spots(db, area: str, count: int) -> list[tuple[float, float]]:
+    """Well-spaced points (100 m or more apart) inside the area's polygon, so a complaint is filed under the right ward. Empty when the area has no polygon."""
+    rows = (await db.execute(text("""SELECT ST_Y(d.geom) AS lat, ST_X(d.geom) AS lng
+                                     FROM wards w, LATERAL ST_Dump(ST_GeneratePoints(ST_Buffer(w.geom::geometry, -0.0008), 400, 4243)) d
+                                     WHERE w.name = :n AND w.geom IS NOT NULL"""), {"n": area})).all()
+    picked: list[tuple[float, float]] = []
+    for r in rows:
+        if all(math.hypot((r.lat - a) * 111_320, (r.lng - b) * 111_320 * math.cos(math.radians(a))) > 120 for a, b in picked):
+            picked.append((r.lat, r.lng))
+        if len(picked) == count:
+            break
+    return picked
+
+
 def spot(centre: tuple[float, float], n: int, area: str | None = None) -> tuple[float, float]:
     """A real street location in the area (seed_data/road_points.json, from scripts.make_road_points), 100 m or more from the others, so
     nothing merges and nothing lands in the sea. Without that file: points on a spiral around the area centre."""
@@ -61,6 +76,11 @@ def spot(centre: tuple[float, float], n: int, area: str | None = None) -> tuple[
     r = 160 + 70 * n                    # metres from the centre
     a = n * 2.4                         # golden-angle-ish turn
     return centre[0] + r * math.sin(a) / 111_320, centre[1] + r * math.cos(a) / (111_320 * math.cos(math.radians(centre[0])))
+
+
+def _ROADS_KEYS() -> set[str]:
+    spot((0, 0), 0)  # loads the file
+    return set(_ROADS or {})
 
 
 async def main() -> None:
@@ -84,20 +104,22 @@ async def main() -> None:
             email = f"ward.{area.lower().replace(' ', '')}@bmc.demo"
             o = await db.scalar(select(User).where(User.email == email))
             if o is None:
-                fresh.append(area)
                 o = User(role="authority", name=f"{area} Ward Officer", email=email, password_hash=hash_password("ward12345"), ward_id=ref.ward_id(area))
                 db.add(o)
                 await db.flush()
-                db.add(AuthorityProfile(user_id=o.id, employee_id=f"BMC-W{len(officers) + 21:03d}", department_id=ref.department_id("General / Ward Office"), approval="approved", decided_at=datetime.now(UTC)))
+                db.add(AuthorityProfile(user_id=o.id, employee_id=f"BMC-WD{ref.ward_id(area):03d}", department_id=ref.department_id("General / Ward Office"), approval="approved", decided_at=datetime.now(UTC)))
             officers[area] = o
+            if await db.scalar(text("SELECT count(*) FROM incidents WHERE ward_id = :w"), {"w": ref.ward_id(area)}) < MIN_INCIDENTS:
+                fresh.append(area)
         await db.flush()
 
         new_ids: list = []
         for a_idx, area in enumerate(AREAS):
             if area not in fresh:
                 continue
+            poly = [] if area in _ROADS_KEYS() else await polygon_spots(db, area, len(PROBLEMS))
             for n, (category, problem, desc, landmark) in enumerate(PROBLEMS):
-                lat, lng = spot(AREA_CENTRES[area], n, area)
+                lat, lng = poly[n] if n < len(poly) else spot(AREA_CENTRES[area], n, area)
                 photos = sorted((IMAGES / category).glob("*.jpg"))
                 reporter = citizens[(a_idx * 10 + n) % len(citizens)]
                 media_ids = []
@@ -138,7 +160,7 @@ async def main() -> None:
         await recompute_priority(db, new_ids)
         await db.commit()
     await engine.dispose()
-    print(f"added {len(fresh) * len(PROBLEMS)} complaints in {len(fresh)} new areas: {fresh}")
+    print(f"ward officers ready for {len(AREAS)} areas; added {len(fresh) * len(PROBLEMS)} complaints in {len(fresh)} areas: {fresh}")
 
 
 if __name__ == "__main__":

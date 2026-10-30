@@ -993,3 +993,4 @@ a.linkbtn{display:inline-flex;align-items:center;gap:6px;text-decoration:none;co
 .rt-knob{display:flex;flex-direction:column;gap:6px;background:#fff;border:1px solid var(--line);border-top:4px solid var(--line);border-radius:14px;padding:12px 14px}
 .rt-name{font-weight:700;font-size:14px}.rt-name small{display:block;font-weight:400;color:var(--muted);font-size:12px}
 .rt-val{font-size:26px;font-family:Manrope,sans-serif}.rt-knob input[type=range]{width:100%;accent-color:var(--green)}.rt-knob>small{color:var(--muted);font-size:12px}
+.responsible-ward{margin-top:6px;font-size:.9rem}

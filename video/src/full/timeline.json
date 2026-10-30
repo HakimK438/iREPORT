@@ -1,0 +1,21 @@
+{
+  "_comment": "Section boundaries of the full LinkedIn video (global frames, 30 fps, 120 BPM: 1 bar = 60 frames). Read by src/full/*.tsx and scripts/make_full_audio.py; re-run the script after changing it.",
+  "fps": 30,
+  "durationInFrames": 1380,
+  "sections": {
+    "city": { "from": 0, "durationInFrames": 120 },
+    "home": { "from": 120, "durationInFrames": 90 },
+    "citizen": { "from": 210, "durationInFrames": 390 },
+    "officer": { "from": 600, "durationInFrames": 270 },
+    "confirm": { "from": 870, "durationInFrames": 120 },
+    "overview": { "from": 990, "durationInFrames": 78 },
+    "logo": { "from": 1056, "durationInFrames": 156 },
+    "credits": { "from": 1200, "durationInFrames": 180 }
+  },
+  "music": {
+    "drumsIn": 120,
+    "riserFrom": 1020,
+    "impact": 1080,
+    "end": 1380
+  }
+}

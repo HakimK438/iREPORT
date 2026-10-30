@@ -1,0 +1,203 @@
+{
+  "viewport": {
+    "width": 1600,
+    "height": 900,
+    "deviceScaleFactor": 2
+  },
+  "steps": [
+    {
+      "id": "c01-home",
+      "file": "c01-home.jpg",
+      "targets": {
+        "start": {
+          "x": 269,
+          "y": 424,
+          "w": 195,
+          "h": 52
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "c02-category",
+      "file": "c02-category.jpg",
+      "targets": {
+        "pothole": {
+          "x": 489,
+          "y": 371,
+          "w": 149,
+          "h": 175
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "c03-category-picked",
+      "file": "c03-category-picked.jpg",
+      "targets": {
+        "next": {
+          "x": 489,
+          "y": 701,
+          "w": 623,
+          "h": 43
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "c04-questions",
+      "file": "c04-questions.jpg",
+      "targets": {
+        "answer": {
+          "x": 489,
+          "y": 374,
+          "w": 623,
+          "h": 50
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "c05-questions-done",
+      "file": "c05-questions-done.jpg",
+      "targets": {
+        "description": {
+          "x": 502,
+          "y": 558,
+          "w": 596,
+          "h": 85
+        },
+        "next": {
+          "x": 489,
+          "y": 701,
+          "w": 623,
+          "h": 43
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "c06-photo",
+      "file": "c06-photo.jpg",
+      "targets": {
+        "upload": {
+          "x": 489,
+          "y": 349,
+          "w": 623,
+          "h": 83
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "c07-photo-added",
+      "file": "c07-photo-added.jpg",
+      "targets": {
+        "preview": {
+          "x": 489,
+          "y": 383,
+          "w": 149,
+          "h": 135
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "c08-gps",
+      "file": "c08-gps.jpg",
+      "targets": {
+        "gps": {
+          "x": 489,
+          "y": 429,
+          "w": 308,
+          "h": 43
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "c09-location",
+      "file": "c09-location.jpg",
+      "targets": {
+        "map": {
+          "x": 489,
+          "y": 315,
+          "w": 623,
+          "h": 270
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "c10-location-next",
+      "file": "c10-location-next.jpg",
+      "targets": {
+        "next": {
+          "x": 489,
+          "y": 701,
+          "w": 623,
+          "h": 43
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "c11-review",
+      "file": "c11-review.jpg",
+      "targets": {
+        "card": {
+          "x": 489,
+          "y": 55,
+          "w": 623,
+          "h": 790
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "c12-ai",
+      "file": "c12-ai.jpg",
+      "targets": {
+        "ai": {
+          "x": 489,
+          "y": 351,
+          "w": 623,
+          "h": 198
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "c13-submit",
+      "file": "c13-submit.jpg",
+      "targets": {
+        "consent": {
+          "x": 489,
+          "y": 676,
+          "w": 12,
+          "h": 12
+        },
+        "submit": {
+          "x": 489,
+          "y": 702,
+          "w": 623,
+          "h": 43
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "c14-success",
+      "file": "c14-success.jpg",
+      "targets": {
+        "id": {
+          "x": 575,
+          "y": 433,
+          "w": 450,
+          "h": 118
+        }
+      },
+      "note": ""
+    }
+  ]
+}

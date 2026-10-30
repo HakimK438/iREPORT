@@ -72,7 +72,7 @@ async def my_reports(citizen: Citizen, db: Db, cursor: str | None = None, limit:
         params.update(c_at=after[0], c_id=after[1])
     rows = (await db.execute(text(f"""
         SELECT r.id AS report_id, r.created_at AS reported_at, r.problem_type AS my_problem, i.id, i.public_id, c.name AS category,
-               w.name AS area, i.address_text, i.severity::text AS severity, i.status::text AS status, i.affected_count, i.reopen_count, i.resolved_at,
+               w.name AS area, w.bmc_ward, i.address_text, i.severity::text AS severity, i.status::text AS status, i.affected_count, i.reopen_count, i.resolved_at,
                i.created_at, i.updated_at, m.storage_key, m.thumb_key, d.name AS department, r.citizen_message, r.location_source,
                r.ai_confidence, r.ai_source, ac.name AS ai_category, r.user_corrected,
                (SELECT count(*) FROM media x WHERE x.report_id = r.id)::int AS photo_count
@@ -90,7 +90,7 @@ async def my_reports(citizen: Citizen, db: Db, cursor: str | None = None, limit:
     storage = get_storage()
     items = [{
         "report_id": r.report_id, "incident_id": r.id, "public_id": r.public_id,
-        "title": svc.title_of(r.my_problem, r.category, r.address_text), "category": r.category, "area": r.area,
+        "title": svc.title_of(r.my_problem, r.category, r.address_text), "category": r.category, "area": r.area, "bmc_ward": r.bmc_ward,
         "address_text": r.address_text, "severity": r.severity, "status": r.status, "affected_count": r.affected_count,
         "created_at": r.reported_at, "updated_at": r.updated_at, "photo_count": r.photo_count, "max_photos": get_settings().max_photos,
         "image_url": storage.signed_url(r.storage_key) if r.storage_key else None,

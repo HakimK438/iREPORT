@@ -80,13 +80,13 @@ export interface Msg { id: number; from: "authority" | "citizen"; by: string; te
 export interface HistoryEvent { status: Status; at: string; reason?: string | null; note?: boolean; by?: string | null }
 export interface Page<T> { items: T[]; next_cursor: string | null; total?: number | null }
 
-export interface IncidentPublic { citizens?: number; id: string; public_id: string; title: string; category: string; area: string | null; address_text: string | null; severity: Severity; status: Status; flags: string[]; affected_count: number; created_at: string; updated_at: string; distance_m?: number; thumb_url: string | null; reported_by?: string | null; sample_confidence?: number | null; confirmed_by_me?: boolean; reported_by_me?: boolean }
+export interface IncidentPublic { citizens?: number; id: string; public_id: string; title: string; category: string; area: string | null; bmc_ward?: string | null; address_text: string | null; severity: Severity; status: Status; flags: string[]; affected_count: number; created_at: string; updated_at: string; distance_m?: number; thumb_url: string | null; reported_by?: string | null; sample_confidence?: number | null; confirmed_by_me?: boolean; reported_by_me?: boolean }
 export interface Nlp { duration: { text: string; days: number } | null; obstruction: string | null; hazard: string[] | null; urgency: string | null; flags: string[] }
 export interface AiSummary { category: string | null; confidence: number | null; source: string | null; agreement: "agree" | "disagree" | null; disagreement: { image: string; text: string } | null; user_corrected: boolean }
 /** The site photo an officer took when marking a complaint resolved: where the phone was (distance from the complaint) and when. */
 export interface ResolutionProof { at: string; officer: string; distance_m: number; accuracy_m: number | null; flags: string[]; url: string; thumb_url: string }
 export interface ProofUploaded { proof_id: string; distance_m: number; accuracy_m: number; thumb_url: string }
-export interface MyReport { resolution_proof?: ResolutionProof | null; photo_count?: number; max_photos?: number; reopen_count?: number; can_respond?: boolean; closes_at?: string | null; department?: string | null; citizen_message?: string | null; location_source?: string | null; ai?: { category: string | null; confidence: number | null; source: string | null; user_corrected: boolean }; report_id: string; incident_id: string; public_id: string; title: string; category: string; area: string | null; address_text: string | null; severity: Severity; status: Status; affected_count: number; created_at: string; updated_at: string; image_url: string | null; thumb_url: string | null; history: HistoryEvent[]; messages: Msg[] }
+export interface MyReport { resolution_proof?: ResolutionProof | null; photo_count?: number; max_photos?: number; reopen_count?: number; can_respond?: boolean; closes_at?: string | null; department?: string | null; citizen_message?: string | null; location_source?: string | null; ai?: { category: string | null; confidence: number | null; source: string | null; user_corrected: boolean }; report_id: string; incident_id: string; public_id: string; title: string; category: string; area: string | null; bmc_ward?: string | null; address_text: string | null; severity: Severity; status: Status; affected_count: number; created_at: string; updated_at: string; image_url: string | null; thumb_url: string | null; history: HistoryEvent[]; messages: Msg[] }
 export interface Assignee { id: string; name: string }
 export interface AuthorityRow extends IncidentPublic {
   priority_score: number; risk: number; response: ResponseCat; response_hours: number; due_at: string | null; overdue: boolean; overdue_days: number;
@@ -146,7 +146,7 @@ export interface AdminDash {
   hotspots: Hotspot[];
 }
 export interface Officer { id: string; name: string; department: string | null; ward: string | null; is_me: boolean }
-export interface NearbyCheck { radius_m: number; mine: { id: string; public_id: string; category: string; status: Status; reported_at: string } | null; others: { id: string; public_id: string; category: string; title: string; status: Status; affected_count: number; distance_m: number; confirmed_by_me: boolean }[] }
+export interface NearbyCheck { radius_m: number; mine: { id: string; public_id: string; category: string; status: Status; reported_at: string } | null; others: { id: string; public_id: string; category: string; title: string; status: Status; affected_count: number; distance_m: number; confirmed_by_me: boolean; area?: string | null; bmc_ward?: string | null; reported_by?: string | null }[] }
 export interface UpdateBody {
   status?: Status; message?: string; flags?: string[]; reason?: string; duplicate_of?: string; category?: string; assigned_to?: string; scheduled_for?: string;
 }
@@ -163,7 +163,7 @@ export interface Analysis {
   photo_checks?: PhotoCheck[];
   ai_available: boolean; models: { image: string; text: string }; photo_quality: PhotoQuality[]; photo_errors: { index: number; code: string; message: string }[]; nlp: Nlp | null;
 }
-export interface ReportCreated { report_id: string; incident_id: string; incident_public_id: string; merged: boolean; affected_count: number; severity: Severity; status: Status; area: string | null; department: string | null }
+export interface ReportCreated { report_id: string; incident_id: string; incident_public_id: string; merged: boolean; affected_count: number; severity: Severity; status: Status; area: string | null; bmc_ward?: string | null; department: string | null }
 
 const qs = (params: Record<string, string | number | boolean | undefined | null>) => {
   const p = new URLSearchParams();

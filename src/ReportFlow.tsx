@@ -271,7 +271,7 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
     setUpvoting(true); setDupError("");
     try {
       const r = await api.confirm(item.id);
-      setCreated([{ report_id: item.id, incident_id: item.id, incident_public_id: item.public_id, merged: true, affected_count: r.affected_count, severity: "Medium", status: item.status, area: null, department: geo.data?.departments[effective] ?? null }]);
+      setCreated([{ report_id: item.id, incident_id: item.id, incident_public_id: item.public_id, merged: true, affected_count: r.affected_count, severity: "Medium", status: item.status, area: item.area ?? null, bmc_ward: item.bmc_ward ?? null, department: geo.data?.departments[effective] ?? null }]);
       setDup("upvoted"); setStep(5);
     } catch (err) {
       setDupError(err instanceof ApiError ? err.message : tr(lang, "dupFailed"));
@@ -378,7 +378,7 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
     : others.length > 0 ? <div className="dup-card" role="alert">
       <h3><Icon name="pin" size={17} /> {tr(lang, "nc_othersTitle")}</h3>
       <p>{trf(lang, "nc_othersHelp", { m: nc.data?.radius_m ?? 50 })}</p>
-      {others.map(o => <div className="dup-item" key={o.id}><b>{o.title}</b><small>{o.distance_m} m · {trf(lang, o.affected_count === 1 ? "nc_people1" : "nc_peopleN", { n: o.affected_count })} · {statusName(lang, o.status)} · {o.public_id}</small>
+      {others.map(o => <div className="dup-item" key={o.id}><b>{o.title}</b><small>{o.reported_by ? `${tr(lang, "cmReportedBy")} ${o.reported_by} · ` : ""}{o.area ? `${o.area}${o.bmc_ward ? ` (${tr(lang, "areaWard")} ${o.bmc_ward})` : ""} · ` : ""}{o.distance_m} m · {trf(lang, o.affected_count === 1 ? "nc_people1" : "nc_peopleN", { n: o.affected_count })} · {statusName(lang, o.status)} · {o.public_id}</small>
         <div className="dup-actions">{o.confirmed_by_me ? <span className="muted-line">{tr(lang, "dupAlreadyUpvoted")}</span> : <button className="primary compact" onClick={() => void upvote(o)} disabled={upvoting}>{upvoting ? tr(lang, "submitting") : tr(lang, "nc_confirm")}</button>}</div></div>)}
       <div className="dup-actions"><button className="secondary compact" onClick={() => setDup("raise")}>{tr(lang, "dupRaise")}</button></div>
       {dupError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {dupError}</div>}
@@ -514,7 +514,7 @@ export default function ReportFlow({ open, close, discard, done, lang, initialCa
 
       {step === 5 && created.length > 0 && <div className="success-screen"><svg className="check-anim" viewBox="0 0 52 52" aria-hidden="true"><circle className="check-circle" cx="26" cy="26" r="24" fill="none" /><path className="check-mark" fill="none" d="M14 27l8 8 16-17" /></svg>
         <h2>{dup === "upvoted" ? tr(lang, "dupDone") : tr(lang, "success")}</h2>
-        {created.map(c => <div className="report-id" key={c.report_id}><small>{tr(lang, "reportId").toUpperCase()}</small><b>{c.incident_public_id}</b><span>{c.status}</span><p>{c.merged ? `${tr(lang, "merged")} ${c.affected_count}` : ""}{c.area ? ` ${c.area}` : ""}{c.department ? ` · ${c.department}` : ""}</p></div>)}
+        {created.map(c => <div className="report-id" key={c.report_id}><small>{tr(lang, "reportId").toUpperCase()}</small><b>{c.incident_public_id}</b><span>{c.status}</span><p>{c.merged ? `${tr(lang, "merged")} ${c.affected_count}` : ""}{c.department ? ` ${c.department}` : ""}</p>{c.area && <p className="responsible-ward"><Icon name="pin" size={15} /> {tr(lang, "responsibleWard")}: <b>{c.area}</b>{c.bmc_ward ? ` (BMC ${c.bmc_ward})` : ""}</p>}</div>)}
         {submitError && <div className="form-error" role="alert"><Icon name="alert" size={16} /> {submitError}</div>}
         <p>{tr(lang, "trackIt")}</p>
         <button className="primary full" onClick={() => done(created[0], spot ? { lat: spot.lat, lng: spot.lng } : null)}>{tr(lang, "seeNearby")} <Icon name="arrow" /></button>

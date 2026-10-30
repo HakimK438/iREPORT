@@ -1,0 +1,1046 @@
+[
+ {
+  "file": "Streetlight/sl000.jpg",
+  "category": "Streetlight",
+  "problem_type": "Damaged",
+  "description": "Street light head is loose and tilted on its arm"
+ },
+ {
+  "file": "Streetlight/sl002.jpg",
+  "category": "Streetlight",
+  "problem_type": "Damaged",
+  "description": "Lamp holder is broken and swinging from the pole"
+ },
+ {
+  "file": "Streetlight/sl003.jpg",
+  "category": "Streetlight",
+  "problem_type": "Damaged",
+  "description": "Lamp head is missing and loose cables are swinging"
+ },
+ {
+  "file": "Streetlight/sl015.jpg",
+  "category": "Streetlight",
+  "problem_type": "Damaged",
+  "description": "Light fixture is broken and cables are loose"
+ },
+ {
+  "file": "Streetlight/sl005.jpg",
+  "category": "Streetlight",
+  "problem_type": "Not working",
+  "description": "Street light is broken and does not come on"
+ },
+ {
+  "file": "Streetlight/sl012.jpg",
+  "category": "Streetlight",
+  "problem_type": "Not working",
+  "description": "Bent street light fixture, not working"
+ },
+ {
+  "file": "Streetlight/sl010.jpg",
+  "category": "Streetlight",
+  "problem_type": "Not working",
+  "description": "Rusted street light, off at night"
+ },
+ {
+  "file": "Electrical Hazard/el001.jpg",
+  "category": "Electrical Hazard",
+  "problem_type": "Exposed",
+  "description": "Junction box door is open with live connections exposed"
+ },
+ {
+  "file": "Electrical Hazard/el005.jpg",
+  "category": "Electrical Hazard",
+  "problem_type": "Exposed",
+  "description": "Meter box is open and the connections can be touched"
+ },
+ {
+  "file": "Electrical Hazard/el000.jpg",
+  "category": "Electrical Hazard",
+  "problem_type": "Damaged",
+  "description": "Dense tangle of loose cables around the pole"
+ },
+ {
+  "file": "Electrical Hazard/el013.jpg",
+  "category": "Electrical Hazard",
+  "problem_type": "Damaged",
+  "description": "Heavy bunch of loose cables twisted on the pole"
+ },
+ {
+  "file": "Electrical Hazard/el007.jpg",
+  "category": "Electrical Hazard",
+  "problem_type": "Damaged",
+  "description": "Cables are knotted and bunched on the electric pole"
+ },
+ {
+  "file": "Electrical Hazard/el017.jpg",
+  "category": "Electrical Hazard",
+  "problem_type": "Damaged",
+  "description": "Overloaded pole with tangled cables"
+ },
+ {
+  "file": "Electrical Hazard/el019.jpg",
+  "category": "Electrical Hazard",
+  "problem_type": "Damaged",
+  "description": "Tangled cables around a pole next to flats"
+ },
+ {
+  "file": "Electrical Hazard/el006.jpg",
+  "category": "Electrical Hazard",
+  "problem_type": "Damaged",
+  "description": "Cables and a meter box packed with loose wiring"
+ },
+ {
+  "file": "Drainage/ot002.jpg",
+  "category": "Drainage",
+  "problem_type": "Open manhole",
+  "description": "Open manhole with no cover on the footpath"
+ },
+ {
+  "file": "Drainage/ot008.jpg",
+  "category": "Drainage",
+  "problem_type": "Open manhole",
+  "description": "Large open manhole next to the road, no cover"
+ },
+ {
+  "file": "Road Damage/ot001.jpg",
+  "category": "Road Damage",
+  "problem_type": "Cracked",
+  "description": "Footpath slabs are broken and lifted"
+ },
+ {
+  "file": "Road Damage/ot017.jpg",
+  "category": "Road Damage",
+  "problem_type": "Cracked",
+  "description": "Paving is cracked and uneven"
+ },
+ {
+  "file": "Road Damage/ot000.jpg",
+  "category": "Road Damage",
+  "problem_type": "Small",
+  "description": "A few paving blocks are missing on the footpath"
+ },
+ {
+  "file": "Other/ot009.jpg",
+  "category": "Other",
+  "problem_type": "Loose",
+  "description": "Fence is bent and parts have come off"
+ },
+ {
+  "file": "Other/ot016.jpg",
+  "category": "Other",
+  "problem_type": "Loose",
+  "description": "Railing is loose and rusted"
+ },
+ {
+  "file": "Other/ot019.jpg",
+  "category": "Other",
+  "problem_type": "Loose",
+  "description": "Broken bench and debris on the pavement"
+ },
+ {
+  "file": "Other/ot011.jpg",
+  "category": "Other",
+  "problem_type": "Hanging",
+  "description": "Wrecked hoarding panel leaning at the roadside"
+ },
+ {
+  "file": "Garbage/ga018.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga022.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga027.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga035.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga036.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga043.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga044.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga045.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga047.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga041.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga013.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga019.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga023.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga024.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga028.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga038.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga039.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga042.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga010.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga033.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga037.jpg",
+  "category": "Garbage",
+  "problem_type": "Small",
+  "description": "Scattered litter on the road edge"
+ },
+ {
+  "file": "Garbage/ga015.jpg",
+  "category": "Garbage",
+  "problem_type": "Small",
+  "description": "Scattered litter on the road edge"
+ },
+ {
+  "file": "Pothole/po021.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po024.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po033.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po035.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po042.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po009.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po029.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po037.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po036.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po043.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po018.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po025.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po026.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po010.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po014.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po019.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po031.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po040.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po005.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po008.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po039.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po004.jpg",
+  "category": "Pothole",
+  "problem_type": "Small",
+  "description": "Small pothole at the road edge"
+ },
+ {
+  "file": "Pothole/po006.jpg",
+  "category": "Pothole",
+  "problem_type": "Small",
+  "description": "Small pothole at the road edge"
+ },
+ {
+  "file": "Pothole/po016.jpg",
+  "category": "Pothole",
+  "problem_type": "Small",
+  "description": "Small pothole at the road edge"
+ },
+ {
+  "file": "Pothole/po030.jpg",
+  "category": "Pothole",
+  "problem_type": "Small",
+  "description": "Small pothole at the road edge"
+ },
+ {
+  "file": "Road Damage/po038.jpg",
+  "category": "Road Damage",
+  "problem_type": "Cracked",
+  "description": "Long crack across the road surface"
+ },
+ {
+  "file": "Drainage/wl019.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl016.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl018.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl003.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl025.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl026.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl030.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl041.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl033.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl009.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl013.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl015.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl021.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "School bus and two-wheelers pushing through flooded road near the school"
+ },
+ {
+  "file": "Garbage/ga049.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga050.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga051.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga055.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga056.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga057.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga059.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga060.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga063.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga064.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga065.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga070.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga072.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga073.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga075.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga078.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga079.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga082.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga089.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga093.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga080.jpg",
+  "category": "Garbage",
+  "problem_type": "Overflowing",
+  "description": "Large pile of waste on the road, not collected for days"
+ },
+ {
+  "file": "Garbage/ga048.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga058.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga066.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga068.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga071.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga074.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga076.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga081.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga083.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga091.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga095.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga062.jpg",
+  "category": "Garbage",
+  "problem_type": "Uncollected",
+  "description": "Waste has built up at the roadside"
+ },
+ {
+  "file": "Garbage/ga052.jpg",
+  "category": "Garbage",
+  "problem_type": "Small",
+  "description": "Scattered litter along the lane"
+ },
+ {
+  "file": "Garbage/ga061.jpg",
+  "category": "Garbage",
+  "problem_type": "Small",
+  "description": "Scattered litter along the lane"
+ },
+ {
+  "file": "Garbage/ga084.jpg",
+  "category": "Garbage",
+  "problem_type": "Small",
+  "description": "Scattered litter along the lane"
+ },
+ {
+  "file": "Pothole/po049.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po051.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po052.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po056.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po057.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po061.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po062.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po067.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po069.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po074.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po084.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po085.jpg",
+  "category": "Pothole",
+  "problem_type": "Large",
+  "description": "Large pothole in the middle of the road, vehicles are swerving"
+ },
+ {
+  "file": "Pothole/po048.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po053.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po055.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po059.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po060.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po063.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po064.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po065.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po066.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po070.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po071.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po073.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po075.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po076.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po078.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po082.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po083.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po088.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po089.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po092.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po094.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po095.jpg",
+  "category": "Pothole",
+  "problem_type": "Medium",
+  "description": "Pothole in the carriageway"
+ },
+ {
+  "file": "Pothole/po079.jpg",
+  "category": "Pothole",
+  "problem_type": "Small",
+  "description": "Small pothole at the road edge"
+ },
+ {
+  "file": "Pothole/po090.jpg",
+  "category": "Pothole",
+  "problem_type": "Small",
+  "description": "Small pothole at the road edge"
+ },
+ {
+  "file": "Pothole/po091.jpg",
+  "category": "Pothole",
+  "problem_type": "Small",
+  "description": "Small pothole at the road edge"
+ },
+ {
+  "file": "Drainage/wl067.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl072.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl074.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl075.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl078.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl079.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl084.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl085.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl086.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Drainage/wl071.jpg",
+  "category": "Drainage",
+  "problem_type": "Overflowing",
+  "description": "Road is flooded and vehicles are struggling to pass"
+ },
+ {
+  "file": "Electrical Hazard/old08.jpg",
+  "category": "Electrical Hazard",
+  "problem_type": "Damaged",
+  "description": "Electric pole is leaning badly beside a parked car"
+ },
+ {
+  "file": "Electrical Hazard/old16.jpg",
+  "category": "Electrical Hazard",
+  "problem_type": "Damaged",
+  "description": "Electric pole is tilted at the junction and cables are sagging"
+ },
+ {
+  "file": "Electrical Hazard/old10.jpg",
+  "category": "Electrical Hazard",
+  "problem_type": "Damaged",
+  "description": "Damaged electric pole at the roadside with a broken base"
+ },
+ {
+  "file": "Electrical Hazard/old05.jpg",
+  "category": "Electrical Hazard",
+  "problem_type": "Damaged",
+  "description": "Electric pole is leaning over the shop front"
+ },
+ {
+  "file": "Electrical Hazard/old19.jpg",
+  "category": "Electrical Hazard",
+  "problem_type": "Damaged",
+  "description": "Electric pole is down on the wet road with cables across it"
+ },
+ {
+  "file": "Electrical Hazard/old09.jpg",
+  "category": "Electrical Hazard",
+  "problem_type": "Damaged",
+  "description": "Row of electric poles leaning over the road"
+ }
+]

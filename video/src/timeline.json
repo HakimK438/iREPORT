@@ -1,0 +1,24 @@
+{
+  "_comment": "Single source of timing for the intro. Frames are global (30 fps). 120 BPM, so one beat = 15 frames and one bar = 60 frames. Read by src/intro/*.tsx and by scripts/make_intro_audio.py; after changing anything here, re-run the script.",
+  "fps": 30,
+  "bpm": 120,
+  "durationInFrames": 300,
+  "transitionFrames": 12,
+  "scenes": {
+    "city": { "from": 0, "durationInFrames": 90 },
+    "issues": { "from": 78, "durationInFrames": 90 },
+    "track": { "from": 156, "durationInFrames": 72 },
+    "logo": { "from": 216, "durationInFrames": 84 }
+  },
+  "events": {
+    "cityPins": [30, 45, 60, 72],
+    "whoosh": [78, 156, 216],
+    "tiles": [92, 100, 108, 116, 124],
+    "click": 146,
+    "pinDrop": 166,
+    "statuses": [176, 186, 196, 206],
+    "dot": 224,
+    "impact": 240,
+    "tagline": 256
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "ireport-video",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "studio": "remotion studio",
+    "render:intro": "remotion render src/index.ts Intro out/ireport-intro.mp4"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.539",
+    "@remotion/google-fonts": "4.0.539",
+    "@remotion/layout-utils": "4.0.539",
+    "@remotion/media": "^4.0.539",
+    "@remotion/transitions": "^4.0.539",
+    "react": "19.0.0",
+    "react-dom": "19.0.0",
+    "remotion": "4.0.539"
+  },
+  "devDependencies": {
+    "@types/react": "19.0.0",
+    "puppeteer-core": "^24.10.0",
+    "typescript": "5.7.3"
+  }
+}

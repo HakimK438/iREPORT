@@ -176,6 +176,7 @@ class ReportCreated(BaseModel):
     severity: str
     status: str
     area: str | None = None
+    bmc_ward: str | None = None
     department: str | None = None
 
 
@@ -203,6 +204,7 @@ class IncidentPublic(BaseModel):
     title: str
     category: str
     area: str | None
+    bmc_ward: str | None = None
     address_text: str | None
     severity: str
     status: str
@@ -229,6 +231,7 @@ class MyReport(BaseModel):
     title: str
     category: str
     area: str | None
+    bmc_ward: str | None = None
     address_text: str | None
     severity: str
     status: str

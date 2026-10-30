@@ -120,6 +120,7 @@ export const STR = {
   seeNearby: T("See others near you and upvote", "आसपास की शिकायतें देखें और समर्थन करें", "जवळच्या तक्रारी पहा आणि समर्थन द्या"),
   cmAfterTitle: T("Your report is with the {area} ward office", "आपकी शिकायत {area} वार्ड कार्यालय के पास है", "तुमची तक्रार {area} वॉर्ड कार्यालयाकडे आहे"),
   cmAfterHelp: T("Other problems reported near you are below. Upvote the ones you have also seen: every upvote raises that problem's priority for the ward authority.", "आपके पास दर्ज की गई अन्य समस्याएँ नीचे हैं। जो आपने भी देखी हों उन्हें समर्थन दें: हर समर्थन वार्ड अधिकारी के लिए उसकी प्राथमिकता बढ़ाता है।", "तुमच्या जवळ नोंदवलेल्या इतर समस्या खाली आहेत. तुम्ही पाहिलेल्या समस्यांना समर्थन द्या: प्रत्येक समर्थन वॉर्ड अधिकाऱ्यासाठी तिचे प्राधान्य वाढवते."),
+  responsibleWard: T("Responsible ward office", "जिम्मेदार वार्ड कार्यालय", "जबाबदार वॉर्ड कार्यालय"),
   cmYourReport: T("Your report", "आपकी शिकायत", "तुमची तक्रार"),
   cmReportedBy: T("Reported by", "द्वारा दर्ज", "यांनी नोंदवले"),
   cmUpvote: T("Upvote", "समर्थन करें", "समर्थन द्या"),

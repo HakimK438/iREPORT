@@ -25,7 +25,7 @@ from .storage import get_storage
 # Public columns of an incident plus its title parts and first photo. Used with a pre-filtered
 # "page" CTE so the lateral lookups only run for the rows actually returned.
 ROW_SELECT = """
-SELECT i.id, i.public_id, c.name AS category, c.hazard_points, d.name AS department, w.name AS area, i.address_text, i.severity::text AS severity,
+SELECT i.id, i.public_id, c.name AS category, c.hazard_points, d.name AS department, w.name AS area, w.bmc_ward, i.address_text, i.severity::text AS severity,
        i.status::text AS status, i.flags, i.affected_count, i.priority_score, i.risk, i.due_at, i.scheduled_for, i.reopen_count, i.status_reason,
        i.assigned_to, au.name AS assignee_name, i.needs_review, i.review_reason, cz.n AS citizens, i.created_at, i.updated_at,
        CASE WHEN ru.deleted_at IS NULL THEN ru.name END AS reporter_name,
@@ -70,7 +70,7 @@ def public_row(row) -> dict:
     return {
         "reported_by": reporter_label(getattr(row, "reporter_name", None)),
         "id": row.id, "public_id": row.public_id, "title": title_of(row.problem_type, row.category, row.address_text),
-        "category": row.category, "area": row.area, "address_text": row.address_text, "severity": row.severity,
+        "category": row.category, "area": row.area, "bmc_ward": getattr(row, "bmc_ward", None), "address_text": row.address_text, "severity": row.severity,
         "status": row.status, "flags": list(row.flags), "affected_count": row.affected_count, "citizens": row.citizens,
         "created_at": row.created_at, "updated_at": row.updated_at,
         "thumb_url": storage.signed_url(row.thumb_key) if row.thumb_key else None,
@@ -368,8 +368,9 @@ async def nearby_check(db: AsyncSession, user_id: uuid.UUID, lat: float, lng: fl
                ST_Distance(i.location, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography) AS distance_m,
                EXISTS (SELECT 1 FROM confirmations f WHERE f.incident_id = i.id AND f.user_id = :u) AS confirmed_by_me,
                (SELECT r.problem_type FROM reports r WHERE r.incident_id = i.id AND r.duplicate_of_report_id IS NULL ORDER BY r.created_at LIMIT 1) AS problem_type,
-               i.address_text
-        FROM incidents i JOIN categories c ON c.id = i.category_id
+               i.address_text, w.name AS area, w.bmc_ward,
+               (SELECT u.name FROM reports r JOIN users u ON u.id = r.user_id AND u.deleted_at IS NULL WHERE r.incident_id = i.id AND r.duplicate_of_report_id IS NULL ORDER BY r.created_at LIMIT 1) AS reporter_name
+        FROM incidents i JOIN categories c ON c.id = i.category_id LEFT JOIN wards w ON w.id = i.ward_id
         WHERE {open_sql('i')} AND ST_DWithin(i.location, ST_SetSRID(ST_MakePoint(:lng, :lat), 4326)::geography, :radius)
           AND NOT EXISTS (SELECT 1 FROM reports r WHERE r.incident_id = i.id AND r.user_id = :u AND r.duplicate_of_report_id IS NULL)
         ORDER BY distance_m LIMIT 5"""), {"u": user_id, "lat": lat, "lng": lng, "radius": s.merge_radius_m})).all()
@@ -377,7 +378,8 @@ async def nearby_check(db: AsyncSession, user_id: uuid.UUID, lat: float, lng: fl
         "radius_m": s.merge_radius_m,
         "mine": {"id": mine.id, "public_id": mine.public_id, "category": mine.category, "status": mine.status, "reported_at": mine.reported_at} if mine else None,
         "others": [{"id": r.id, "public_id": r.public_id, "category": r.category, "title": title_of(r.problem_type, r.category, r.address_text), "status": r.status,
-                    "affected_count": r.affected_count, "distance_m": round(r.distance_m), "confirmed_by_me": r.confirmed_by_me, "created_at": r.created_at} for r in rows],
+                    "affected_count": r.affected_count, "distance_m": round(r.distance_m), "confirmed_by_me": r.confirmed_by_me, "created_at": r.created_at,
+                    "area": r.area, "bmc_ward": r.bmc_ward, "reported_by": reporter_label(r.reporter_name)} for r in rows],
     }
 
 
@@ -500,10 +502,10 @@ async def create_report(db: AsyncSession, user_id: uuid.UUID, body: ReportIn) ->
     if media_ids:
         await db.execute(text("UPDATE media SET report_id = :r WHERE id = ANY(CAST(:ids AS uuid[])) AND uploader_id = :u AND report_id IS NULL"), {"r": report_id, "ids": [str(m) for m in media_ids], "u": user_id})
     await recompute_priority(db, [incident_id])
-    place = (await db.execute(text("SELECT w.name AS area FROM incidents i LEFT JOIN wards w ON w.id = i.ward_id WHERE i.id = :i"), {"i": incident_id})).first()
+    place = (await db.execute(text("SELECT w.name AS area, w.bmc_ward FROM incidents i LEFT JOIN wards w ON w.id = i.ward_id WHERE i.id = :i"), {"i": incident_id})).first()
     return {"report_id": report_id, "incident_id": incident_id, "incident_public_id": public_id, "merged": merged,
             "affected_count": row.affected_count, "severity": row.severity, "status": row.status,
-            "area": place.area if place else None, "department": ref.departments.get(category.department_id)}
+            "area": place.area if place else None, "bmc_ward": place.bmc_ward if place else None, "department": ref.departments.get(category.department_id)}
 
 
 async def history(db: AsyncSession, incident_ids: list[uuid.UUID], internal: bool = False) -> dict[uuid.UUID, list[dict]]:

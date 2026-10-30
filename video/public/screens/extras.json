@@ -1,0 +1,59 @@
+{
+  "viewport": {
+    "width": 1600,
+    "height": 900,
+    "deviceScaleFactor": 2
+  },
+  "steps": [
+    {
+      "id": "c00-home",
+      "file": "c00-home.jpg",
+      "targets": {
+        "start": {
+          "x": 269,
+          "y": 486,
+          "w": 195,
+          "h": 52
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "o00-control-room-top",
+      "file": "o00-control-room-top.jpg",
+      "targets": {
+        "analysis": {
+          "x": 388,
+          "y": 340,
+          "w": 91,
+          "h": 43
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "o09-analysis",
+      "file": "o09-analysis.jpg",
+      "targets": {},
+      "note": ""
+    },
+    {
+      "id": "o10-analysis-charts",
+      "file": "o10-analysis-charts.jpg",
+      "targets": {},
+      "note": ""
+    },
+    {
+      "id": "a01-admin",
+      "file": "a01-admin.jpg",
+      "targets": {},
+      "note": ""
+    },
+    {
+      "id": "a02-admin-more",
+      "file": "a02-admin-more.jpg",
+      "targets": {},
+      "note": ""
+    }
+  ]
+}

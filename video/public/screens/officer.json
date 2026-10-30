@@ -1,0 +1,105 @@
+{
+  "viewport": {
+    "width": 1600,
+    "height": 900,
+    "deviceScaleFactor": 2
+  },
+  "steps": [
+    {
+      "id": "o01-control-room",
+      "file": "o01-control-room.jpg",
+      "targets": {},
+      "note": ""
+    },
+    {
+      "id": "o02-complaint-in-list",
+      "file": "o02-complaint-in-list.jpg",
+      "targets": {
+        "card": {
+          "x": 399,
+          "y": 442,
+          "w": 723,
+          "h": 46
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "o03-brief",
+      "file": "o03-brief.jpg",
+      "targets": {
+        "action": {
+          "x": 286,
+          "y": 429,
+          "w": 153,
+          "h": 43
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "o04-acknowledged",
+      "file": "o04-acknowledged.jpg",
+      "targets": {
+        "action": {
+          "x": 286,
+          "y": 428,
+          "w": 133,
+          "h": 43
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "o05-in-progress",
+      "file": "o05-in-progress.jpg",
+      "targets": {
+        "action": {
+          "x": 286,
+          "y": 427,
+          "w": 157,
+          "h": 43
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "o06-resolve-panel",
+      "file": "o06-resolve-panel.jpg",
+      "targets": {
+        "proof": {
+          "x": 310,
+          "y": 429,
+          "w": 980,
+          "h": 43
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "o07-proof-ready",
+      "file": "o07-proof-ready.jpg",
+      "targets": {
+        "note": {
+          "x": 298,
+          "y": 358,
+          "w": 1004,
+          "h": 53
+        },
+        "confirm": {
+          "x": 298,
+          "y": 428,
+          "w": 96,
+          "h": 43
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "o08-resolved",
+      "file": "o08-resolved.jpg",
+      "targets": {},
+      "note": ""
+    }
+  ]
+}

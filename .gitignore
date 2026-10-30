@@ -40,9 +40,6 @@ CLAUDE.md
 IREPORT_FINAL_CLAUDE_TASK.md
 PANEL_REVIEW_GUIDE.md
 PROJECT_GUIDE.md
-/docs/
-/ppt_images/
-/s2/
 *.ppt
 *.pptx
 .env
@@ -57,3 +54,43 @@ public/**/CREDITS.md
 /Location_images/
 /category_images/
 /symbols/
+
+# Raw photo data sets (the curated picks live in backend/seed_data/curated)
+*.zip
+
+# Video project (Remotion): rendered output and dependencies stay local
+video/node_modules/
+video/out/
+
+# ---------------------------------------------------------------
+# Private / reference-only material (never published)
+# ---------------------------------------------------------------
+_archive/
+LINKEDIN_POST*.md
+linkedin*/
+# presentations, project documents, scripts and recordings
+*.ppt
+*.pptx
+*.docx
+*.doc
+*.pdf
+*.mp4
+*.mov
+*.dump
+*.whl
+VIDEO_SCRIPT*
+IREPORT_COMPLETE_SCRIPT*
+SB Project Doc*
+# AI-assistant notes and private guides
+AGENTS.md
+CLAUDE.md
+.claude/
+IREPORT_FINAL_CLAUDE_TASK.md
+PANEL_REVIEW_GUIDE.md
+PROJECT_GUIDE.md
+IMPROVEMENTS_*.md
+documents/
+ppt_images/
+s2/
+# local backups
+_backup*/

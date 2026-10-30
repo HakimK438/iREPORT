@@ -1,0 +1,34 @@
+{
+  "viewport": {
+    "width": 1600,
+    "height": 900,
+    "deviceScaleFactor": 2
+  },
+  "steps": [
+    {
+      "id": "c19-my-reports",
+      "file": "c19-my-reports.jpg",
+      "targets": {},
+      "note": ""
+    },
+    {
+      "id": "c20-my-reports-resolved",
+      "file": "c20-my-reports-resolved.jpg",
+      "targets": {
+        "confirm": {
+          "x": 305,
+          "y": 429,
+          "w": 157,
+          "h": 43
+        }
+      },
+      "note": ""
+    },
+    {
+      "id": "c21-confirmed",
+      "file": "c21-confirmed.jpg",
+      "targets": {},
+      "note": ""
+    }
+  ]
+}
