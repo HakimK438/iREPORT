@@ -129,6 +129,55 @@ Development accounts (created by the seed script, development only):
 
 ---
 
+## Features
+
+### Citizens
+
+- **Guided report flow:** pick the problem, answer a few quick questions (typed or spoken), add up to 3 photos, pin the exact spot (device GPS, photo GPS or map tap), review, submit.
+- **Up to 3 problems at one place:** one is the main problem, the others are listed as other problems. Each becomes its own complaint.
+- **No duplicates:** a second report of the same spot within 50 m is refused and offers to add a photo instead. If someone else already reported it, confirm it with one tap.
+- **Photo and text assistance:** small AI models suggest a category. The suggestion is marked unverified and the citizen's choice wins. A photo that clearly shows something else is refused.
+- **My Reports:** a six-step timeline (Reported, Seen, Scheduled, Work started, Fixed, Closed) plus messages from the ward office.
+- **Confirm or reopen:** when a fix is marked done, the reporter confirms it or reopens it with a reason. No answer in 72 hours closes it automatically.
+- **Community feed:** nearby open problems, sortable, with one-tap confirm and upvote.
+- **Privacy tools:** download your data or delete your account.
+- **Languages:** English, Hindi and Marathi.
+
+### Officers (ward control room)
+
+- **Area-scoped access:** an officer sees and changes only their own ward and department, enforced on the server.
+- **Hazard-sorted list:** CRITICAL, HIGH RISK, MODERATE RISK and ROUTINE, each with a symbol, a one-line reason and a recommended action. Filters for status, priority, area, category and search.
+- **Complaint brief:** a work-order style view with why it is urgent, where it is, evidence per reporter, history at this spot, nearby open work and a timeline.
+- **One next action:** Acknowledge, Start work or Mark resolved. Hold, reject, duplicate, transfer and scheduling sit under More.
+- **Proof of work:** resolving needs a completion note and a photo taken at the site (GPS within 150 m, not reused).
+- **Fake-report checks:** weak photo matches are flagged for review, and repeat abusers are paused.
+- **Map and hotspots:** open complaints coloured by hazard, problem clusters and area cards.
+- **Print work order:** an A4 sheet per complaint, plus mailto/SMS links to send it to a crew.
+- **Analysis tab:** backlog trend, overdue work, on-time performance by department and ward, repeat spots, CSV export and a printable report.
+
+### Administrators
+
+- **City dashboard:** map of every complaint, summary cards, weekly workload chart, priority, problem-type and area breakdowns, hotspots and officer workload. Every number is counted straight from the database.
+- **Officer approvals:** approve, reject or revoke officer accounts, with an audit of each officer's resolutions.
+- **Response times:** sliders to set the days each priority level gets before a complaint is overdue.
+
+### How priority is decided
+
+`risk = impact x likelihood` (1 to 16), using the risk-matrix method from road-maintenance practice.
+
+| Category | Risk | Fix-by |
+|---|---|---|
+| CRITICAL | 12 to 16 | 24 hours |
+| HIGH RISK | 8 to 11 | 3 days |
+| MODERATE RISK | 4 to 7 | 14 days |
+| ROUTINE | 1 to 3 | 30 days |
+
+Impact comes from the problem type (an electrical hazard scores highest). Likelihood rises for a main road, a nearby school or hospital, several reporters, monsoon months and night-time hazards. Due dates only ever move earlier. Admins can change the default days.
+
+Full details: [docs/FEATURES.md](docs/FEATURES.md).
+
+---
+
 ## Run the tests
 
 ```bash
